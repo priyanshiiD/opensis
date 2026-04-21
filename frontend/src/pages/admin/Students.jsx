@@ -41,7 +41,7 @@ export default function AdminStudents() {
           <h1 className="text-2xl font-bold text-slate-800">Students</h1>
           <p className="text-slate-500 text-sm">{total} total enrolled</p>
         </div>
-        <Link to="/admin/students/enroll" className="btn-primary">
+        <Link to="/admin/enroll-student" className="btn-primary">
           <Plus className="w-4 h-4" />Enroll Student
         </Link>
       </div>
