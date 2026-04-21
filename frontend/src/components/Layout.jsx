@@ -28,7 +28,7 @@ export default function Layout({ children, navItems }) {
           <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
             <GraduationCap className="w-5 h-5 text-white" />
           </div>
-          <span className="font-bold text-slate-800 text-lg">College ERP</span>
+          <span className="font-bold text-slate-800 text-lg">OpenSIS</span>
           <button className="ml-auto lg:hidden" onClick={() => setSidebarOpen(false)}><X className="w-5 h-5" /></button>
         </div>
 
@@ -73,7 +73,7 @@ export default function Layout({ children, navItems }) {
       <div className="flex-1 flex flex-col min-w-0">
         <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-4 lg:hidden">
           <button onClick={() => setSidebarOpen(true)}><Menu className="w-5 h-5" /></button>
-          <span className="font-semibold text-slate-800">College ERP</span>
+          <span className="font-semibold text-slate-800">OpenSIS</span>
         </header>
         <main className="flex-1 p-6 overflow-auto">{children}</main>
       </div>
