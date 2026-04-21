@@ -23,7 +23,7 @@ export default function AdminFaculty() {
           <h1 className="text-2xl font-bold text-slate-800">Faculty</h1>
           <p className="text-slate-500 text-sm">{faculty.length} members</p>
         </div>
-        <Link to="/admin/faculty/enroll" className="btn-primary"><Plus className="w-4 h-4" />Enroll Faculty</Link>
+        <Link to="/admin/enroll-faculty" className="btn-primary"><Plus className="w-4 h-4" />Enroll Faculty</Link>
       </div>
 
       <div className="card mb-4">
