@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Building2, Eye, EyeOff, GraduationCap, Users, ShieldCheck, ChevronRight } from 'lucide-react';
+import { Building2, Eye, EyeOff, GraduationCap, Users, ShieldCheck, ChevronRight, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function Login() {
@@ -11,29 +11,92 @@ export default function Login() {
   const [form, setForm] = useState({ email: '', password: '' });
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // Pre-fill demo credentials when role changes
-  useEffect(() => {
-    if (role === 'admin') setForm({ email: 'admin@college.edu', password: 'Admin@123' });
-    if (role === 'faculty') setForm({ email: 'prof.sharma@college.edu', password: 'Faculty@123' });
-    if (role === 'student') setForm({ email: 'alice@student.college.edu', password: 'Student@123' });
-  }, [role]);
+  const [errors, setErrors] = useState({ email: '', password: '', login: '' });
 
   if (user) {
     const redirects = { admin: '/admin/dashboard', student: '/student/dashboard', faculty: '/faculty/dashboard' };
     navigate(redirects[user.role] || '/', { replace: true });
   }
 
+  // Email validation regex - college email format
+  const isValidEmail = (email) => {
+    // Check if email matches college domain format (e.g., name@college.edu)
+    const collegeEmailRegex = /^[^\s@]+@[^\s@]+\.edu$/;
+    return collegeEmailRegex.test(email);
+  };
+
+  // Validate form before submission
+  const validateForm = () => {
+    const newErrors = { email: '', password: '', login: '' };
+
+    if (!form.email.trim()) {
+      newErrors.email = 'Email is required';
+    } else if (!isValidEmail(form.email)) {
+      newErrors.email = 'Enter a valid college email (e.g., name@college.edu)';
+    }
+
+    if (!form.password) {
+      newErrors.password = 'Password is required';
+    }
+
+    setErrors(newErrors);
+    return !newErrors.email && !newErrors.password;
+  };
+
+  // Clear field-specific error when user starts typing
+  const handleEmailChange = (e) => {
+    setForm(f => ({ ...f, email: e.target.value }));
+    if (errors.email) setErrors(e => ({ ...e, email: '' }));
+  };
+
+  const handlePasswordChange = (e) => {
+    setForm(f => ({ ...f, password: e.target.value }));
+    if (errors.password) setErrors(e => ({ ...e, password: '' }));
+  };
+
+  // Reset form when switching roles
+  const handleRoleChange = (newRole) => {
+    setRole(newRole);
+    // Clear all input fields
+    setForm({ email: '', password: '' });
+    // Clear all validation and login errors
+    setErrors({ email: '', password: '', login: '' });
+    // Reset password visibility
+    setShow(false);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate form
+    if (!validateForm()) return;
+
     setLoading(true);
+    setErrors(e => ({ ...e, login: '' })); // Clear previous login errors
+
     try {
       const u = await login(form.email, form.password);
       toast.success(`Welcome back, ${u.profile?.firstName || u.email}!`);
       const redirects = { admin: '/admin/dashboard', student: '/student/dashboard', faculty: '/faculty/dashboard' };
       navigate(redirects[u.role] || '/', { replace: true });
-    } catch {
-      // toast is handled by interceptor
+    } catch (error) {
+      const message = error.response?.data?.message || 'Login failed. Please try again.';
+      
+      // Map error messages based on specific backend responses
+      let displayMessage = message;
+      
+      // Check for specific error cases in priority order
+      if (message.includes('User not found')) {
+        displayMessage = 'User not found. Please contact admin';
+      } else if (message.includes('Incorrect password')) {
+        displayMessage = 'Incorrect password';
+      } else if (message.includes('deactivated')) {
+        displayMessage = 'Your account has been deactivated. Please contact admin';
+      } else if (message.includes('not authorized') || message.includes('not enrolled')) {
+        displayMessage = 'You are not authorized. Contact admin';
+      }
+      
+      setErrors(e => ({ ...e, login: displayMessage }));
     } finally {
       setLoading(false);
     }
@@ -116,7 +179,7 @@ export default function Login() {
                     <button
                       key={r.id}
                       type="button"
-                      onClick={() => setRole(r.id)}
+                      onClick={() => handleRoleChange(r.id)}
                       className={`flex flex-col items-center justify-center gap-2 p-3 rounded-2xl border-2 transition-all duration-200 ${
                         isActive 
                           ? `border-primary-500 ${r.bg} shadow-md shadow-primary-500/10 scale-[1.02]` 
@@ -135,18 +198,35 @@ export default function Login() {
               </div>
             </div>
 
+            {/* Login Error Alert */}
+            {errors.login && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-sm font-medium text-red-700">{errors.login}</p>
+              </div>
+            )}
+
             {/* Inputs */}
-            <div className="space-y-4">
+            <div className="space-y-5">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-1.5">Email Address</label>
                 <input
                   type="email"
-                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 placeholder-slate-400 transition-all shadow-sm"
-                  placeholder="your@email.edu"
+                  className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:outline-none focus:ring-2 transition-all shadow-sm placeholder-slate-400 ${
+                    errors.email
+                      ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500'
+                      : 'border-slate-200 focus:ring-primary-500/20 focus:border-primary-500'
+                  }`}
+                  placeholder="Enter your college email (e.g., name@college.edu)"
                   value={form.email}
-                  onChange={e => setForm(f => ({ ...f, email: e.target.value }))}
-                  required
+                  onChange={handleEmailChange}
                 />
+                {errors.email && (
+                  <p className="text-sm font-medium text-red-600 mt-1.5 flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4" />
+                    {errors.email}
+                  </p>
+                )}
               </div>
               <div>
                 <div className="flex justify-between items-center mb-1.5">
@@ -158,27 +238,48 @@ export default function Login() {
                 <div className="relative">
                   <input
                     type={show ? 'text' : 'password'}
-                    className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 placeholder-slate-400 transition-all shadow-sm pr-11"
-                    placeholder="••••••••"
+                    className={`w-full px-4 py-3 bg-white border rounded-xl text-sm focus:outline-none focus:ring-2 transition-all shadow-sm pr-11 placeholder-slate-400 ${
+                      errors.password
+                        ? 'border-red-300 focus:ring-red-500/20 focus:border-red-500'
+                        : 'border-slate-200 focus:ring-primary-500/20 focus:border-primary-500'
+                    }`}
+                    placeholder="Enter your password"
                     value={form.password}
-                    onChange={e => setForm(f => ({ ...f, password: e.target.value }))}
-                    required
+                    onChange={handlePasswordChange}
                   />
-                  <button type="button" onClick={() => setShow(s => !s)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors">
+                  <button 
+                    type="button" 
+                    onClick={() => setShow(s => !s)} 
+                    className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                  >
                     {show ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
                 </div>
+                {errors.password && (
+                  <p className="text-sm font-medium text-red-600 mt-1.5 flex items-center gap-1">
+                    <AlertCircle className="w-4 h-4" />
+                    {errors.password}
+                  </p>
+                )}
               </div>
             </div>
 
-            <div className="flex items-center gap-2 mt-4">
-              <input type="checkbox" id="remember" className="w-4 h-4 rounded text-primary-600 border-slate-300 focus:ring-primary-500 cursor-pointer" />
-              <label htmlFor="remember" className="text-sm text-slate-600 cursor-pointer">Keep me signed in</label>
-            </div>
-
-            <button type="submit" disabled={loading} className="w-full bg-primary-600 hover:bg-primary-700 text-white rounded-xl py-3.5 px-4 font-bold text-sm shadow-md shadow-primary-500/20 transition-all active:scale-[0.98] disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2 group">
-              {loading ? 'Authenticating...' : 'Sign In securely'}
-              {!loading && <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />}
+            <button 
+              type="submit" 
+              disabled={loading} 
+              className="w-full bg-primary-600 hover:bg-primary-700 disabled:bg-primary-600 text-white rounded-xl py-3.5 px-4 font-bold text-sm shadow-md shadow-primary-500/20 transition-all active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2 group"
+            >
+              {loading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Logging in...
+                </>
+              ) : (
+                <>
+                  Sign In securely
+                  <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
             </button>
           </form>
           
