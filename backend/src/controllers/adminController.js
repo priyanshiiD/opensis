@@ -12,7 +12,7 @@ const Admin = require('../models/Admin');
 // Students
 exports.enrollStudent = async (req, res) => {
   try {
-    const { email, password, enrollmentNo, firstName, lastName, branch, currentSemester, section, admissionYear, session, dob, gender, phone, address, fatherName, motherName } = req.body;
+    const { email, password, enrollmentNo, firstName, lastName, department, year, semester, section, admissionYear, session, dob, gender, phone, address, fatherName, motherName } = req.body;
 
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ success: false, message: 'Email already in use' });
@@ -21,7 +21,7 @@ exports.enrollStudent = async (req, res) => {
     const user = await User.create({ email, passwordHash, role: 'student' });
 
     const student = await Student.create({
-      userId: user._id, enrollmentNo, firstName, lastName, branch, currentSemester, section, admissionYear, session, dob, gender, phone, address, fatherName, motherName,
+      userId: user._id, enrollmentNo, firstName, lastName, department, year: Number(year), semester, section, admissionYear, session, dob, gender, phone, address, fatherName, motherName,
     });
 
     res.status(201).json({ success: true, data: { student } });
@@ -33,14 +33,16 @@ exports.enrollStudent = async (req, res) => {
 exports.getStudents = async (req, res) => {
   try {
     const filter = {};
-    if (req.query.branch) filter.branch = req.query.branch;
-    if (req.query.semester) filter.currentSemester = Number(req.query.semester);
+    if (req.query.department) filter.department = req.query.department;
+    if (req.query.year) filter.year = Number(req.query.year);
+    if (req.query.section) filter.section = req.query.section;
+    if (req.query.semester) filter.semester = req.query.semester;
     if (req.query.gender) filter.gender = req.query.gender;
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 20;
     const skip = (page - 1) * limit;
     const [students, total] = await Promise.all([
-      Student.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit).lean(),
+      Student.find(filter).sort({ department: 1, year: 1, section: 1, firstName: 1 }).skip(skip).limit(limit).lean(),
       Student.countDocuments(filter),
     ]);
     res.json({ success: true, data: { students, total, page, pages: Math.ceil(total / limit) } });
@@ -52,6 +54,20 @@ exports.getStudents = async (req, res) => {
 exports.getStudent = async (req, res) => {
   try {
     const student = await Student.findById(req.params.id).lean();
+    if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
+    res.json({ success: true, data: { student } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.updateStudent = async (req, res) => {
+  try {
+    const allowed = ['firstName', 'lastName', 'dob', 'gender', 'phone', 'address', 'fatherName', 'motherName', 'department', 'year', 'semester', 'section', 'admissionYear', 'session', 'profilePhotoUrl'];
+    const update = {};
+    allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
+    if (update.year) update.year = Number(update.year);
+    const student = await Student.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
     if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
     res.json({ success: true, data: { student } });
   } catch (err) {
@@ -89,6 +105,19 @@ exports.getFaculty = async (req, res) => {
 exports.getFacultyById = async (req, res) => {
   try {
     const faculty = await Faculty.findById(req.params.id).populate('subjectsTaught').lean();
+    if (!faculty) return res.status(404).json({ success: false, message: 'Faculty not found' });
+    res.json({ success: true, data: { faculty } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.updateFaculty = async (req, res) => {
+  try {
+    const allowed = ['firstName', 'lastName', 'phone', 'address', 'department', 'designation', 'qualification', 'joiningDate', 'profilePhotoUrl'];
+    const update = {};
+    allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
+    const faculty = await Faculty.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
     if (!faculty) return res.status(404).json({ success: false, message: 'Faculty not found' });
     res.json({ success: true, data: { faculty } });
   } catch (err) {

@@ -7,7 +7,11 @@ const facultySchema = new mongoose.Schema({
   lastName: { type: String, required: true, trim: true },
   phone: String,
   address: String,
-  department: String,
+  department: { type: String, required: true },
+  year: { type: Number }, // if faculty is assigned to a specific year
+  section: { type: String }, // if faculty is assigned to a specific section
+  session: { type: String }, // for sessional assignments
+  semester: { type: String }, // e.g. "Jan-May", "July-Dec"
   designation: String,
   qualification: String,
   joiningDate: Date,

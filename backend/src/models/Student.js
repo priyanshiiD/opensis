@@ -9,11 +9,12 @@ const studentSchema = new mongoose.Schema({
   gender: { type: String, enum: ['male', 'female', 'other'] },
   phone: String,
   address: String,
-  branch: { type: String, required: true },
-  currentSemester: { type: Number, required: true },
-  section: String,
-  admissionYear: Number,
-  session: String,
+  department: { type: String, required: true }, // renamed from branch
+  year: { type: Number, required: true }, // 1, 2, 3, 4
+  semester: { type: String, required: true }, // e.g. "Jan-May", "July-Dec"
+  section: { type: String, required: true },
+  admissionYear: { type: Number, required: true },
+  session: { type: String, required: true },
   profilePhotoUrl: String,
   fatherName: String,
   motherName: String,

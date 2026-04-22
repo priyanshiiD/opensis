@@ -1,4 +1,5 @@
 const { v4: uuidv4 } = require('uuid');
+const { getSemesterNumber } = require('../utils/academic');
 const Student = require('../models/Student');
 const Attendance = require('../models/Attendance');
 const Assignment = require('../models/Assignment');
@@ -70,8 +71,9 @@ exports.getAssignments = async (req, res) => {
       .populate('facultyId', 'firstName lastName')
       .lean();
 
+    const semNum = getSemesterNumber(student.year, student.semester);
     const relevant = assignments
-      .filter(a => a.subjectId?.branch === student.branch && a.subjectId?.semester === student.currentSemester)
+      .filter(a => a.subjectId?.branch === student.department && a.subjectId?.semester === semNum)
       .map(a => {
         const sub = a.submissions?.find(s => s.studentId?.toString() === student._id.toString());
         return { ...a, mySubmission: sub || null, submissions: undefined };
@@ -119,7 +121,7 @@ exports.getNotices = async (req, res) => {
 exports.getExamSchedule = async (req, res) => {
   try {
     const student = await Student.findOne({ userId: req.user._id });
-    const schedules = await ExamSchedule.find({ branch: student.branch, semester: student.currentSemester })
+    const schedules = await ExamSchedule.find({ branch: student.department, semester: getSemesterNumber(student.year, student.semester) })
       .populate('entries.subjectId', 'code name')
       .lean();
     res.json({ success: true, data: { schedules } });
@@ -193,7 +195,7 @@ exports.getLibrary = async (req, res) => {
 exports.getClassSchedule = async (req, res) => {
   try {
     const student = await Student.findOne({ userId: req.user._id });
-    const schedule = await ClassSchedule.findOne({ branch: student.branch, semester: student.currentSemester, section: student.section })
+    const schedule = await ClassSchedule.findOne({ branch: student.department, semester: getSemesterNumber(student.year, student.semester), section: student.section })
       .populate('timetable.subjectId', 'code name')
       .populate('timetable.facultyId', 'firstName lastName')
       .lean();
@@ -231,7 +233,8 @@ exports.getAdmitCard = async (req, res) => {
     const student = await Student.findOne({ userId: req.user._id }).lean();
     if (!student) return res.status(404).json({ success: false, message: 'Profile not found' });
 
-    const schedules = await ExamSchedule.find({ branch: student.branch, semester: student.currentSemester })
+    const semNum = getSemesterNumber(student.year, student.semester);
+    const schedules = await ExamSchedule.find({ branch: student.department, semester: semNum })
       .populate('entries.subjectId', 'code name')
       .lean();
 
@@ -241,8 +244,8 @@ exports.getAdmitCard = async (req, res) => {
       student: {
         name: `${student.firstName} ${student.lastName}`,
         enrollmentNo: student.enrollmentNo,
-        branch: student.branch,
-        semester: student.currentSemester,
+        branch: student.department,
+        semester: semNum,
         section: student.section,
         session: student.session,
         fatherName: student.fatherName,
@@ -274,7 +277,7 @@ exports.getFeeReceipt = async (req, res) => {
       student: {
         name: `${student.firstName} ${student.lastName}`,
         enrollmentNo: student.enrollmentNo,
-        branch: student.branch,
+        branch: student.department,
         semester: fee.semester,
         session: fee.session,
       },
