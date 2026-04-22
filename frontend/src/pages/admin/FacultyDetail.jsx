@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/axios';
-import { ArrowLeft, User } from 'lucide-react';
+import { ArrowLeft, User, Pencil } from 'lucide-react';
 
 function Field({ label, value }) {
   return (
     <div>
       <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">{label}</p>
-      <p className="text-sm text-slate-800 mt-0.5">{value || '—'}</p>
+      <p className="text-sm text-slate-800 mt-0.5 break-all">{value || '—'}</p>
     </div>
   );
 }
@@ -29,7 +29,11 @@ export default function FacultyDetail() {
       <div className="flex items-center gap-3 mb-6">
         <Link to="/admin/faculty" className="text-slate-400 hover:text-slate-600"><ArrowLeft className="w-5 h-5" /></Link>
         <h1 className="text-2xl font-bold text-slate-800">Faculty Profile</h1>
+        <Link to={`/admin/faculty/${id}/edit`} className="ml-auto btn-secondary flex items-center gap-2">
+          <Pencil className="w-4 h-4" />Edit Details
+        </Link>
       </div>
+
       <div className="card mb-4">
         <div className="flex items-center gap-4">
           <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
@@ -37,19 +41,22 @@ export default function FacultyDetail() {
           </div>
           <div>
             <h2 className="text-xl font-semibold text-slate-800">{faculty.firstName} {faculty.lastName}</h2>
-            <p className="text-slate-500 text-sm">{faculty.designation}</p>
+            <p className="text-slate-500 text-sm">{faculty.designation || 'Faculty'}</p>
+            <p className="text-slate-400 text-xs mt-0.5">{faculty.email || '—'}</p>
           </div>
           <span className="ml-auto badge-indigo">{faculty.department}</span>
         </div>
       </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="card">
           <h3 className="font-semibold text-slate-700 mb-4">Details</h3>
           <div className="space-y-3">
             <Field label="Employee ID" value={faculty.employeeId} />
+            <Field label="Email" value={faculty.email} />
+            <Field label="Phone" value={faculty.phone} />
             <Field label="Qualification" value={faculty.qualification} />
             <Field label="Joining Date" value={faculty.joiningDate ? new Date(faculty.joiningDate).toLocaleDateString() : null} />
-            <Field label="Phone" value={faculty.phone} />
             <Field label="Address" value={faculty.address} />
           </div>
         </div>

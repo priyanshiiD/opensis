@@ -16,6 +16,23 @@ const Fee = require('../models/Fee');
 const Attendance = require('../models/Attendance');
 
 async function seed() {
+  if (process.env.NODE_ENV !== 'development') {
+    console.error('❌ Seed can only run in development environment. Aborting.');
+    process.exit(1);
+  }
+
+  const readline = require('readline').createInterface({ input: process.stdin, output: process.stdout });
+  await new Promise((resolve, reject) => {
+    readline.question('⚠️  This will DELETE ALL DATA and re-seed. Type "yes" to confirm: ', (answer) => {
+      readline.close();
+      if (answer.trim().toLowerCase() !== 'yes') {
+        console.log('Aborted.');
+        process.exit(0);
+      }
+      resolve();
+    });
+  });
+
   await mongoose.connect(process.env.MONGODB_URI);
   console.log('Connected to MongoDB');
 
