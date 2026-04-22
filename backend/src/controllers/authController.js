@@ -16,19 +16,27 @@ const getProfile = async (userId, role) => {
 
 exports.login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, role } = req.body;
     
     // Validate input
-    if (!email || !password) {
+    if (!email || !password || !role) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Email and password are required' 
+        message: 'Email, password, and role are required' 
       });
     }
 
     // Find user by email
     const user = await User.findOne({ email });
     if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found. Please contact admin' 
+      });
+    }
+
+    // Check if user role matches the selected role
+    if (user.role !== role) {
       return res.status(404).json({ 
         success: false, 
         message: 'User not found. Please contact admin' 
@@ -53,14 +61,14 @@ exports.login = async (req, res) => {
     }
 
     // Check enrollment for student and faculty roles
-    if (user.role === 'student' || user.role === 'faculty') {
-      const ModelClass = user.role === 'student' ? Student : Faculty;
+    if (role === 'student' || role === 'faculty') {
+      const ModelClass = role === 'student' ? Student : Faculty;
       const profile = await ModelClass.findOne({ userId: user._id });
       
       if (!profile) {
-        return res.status(403).json({ 
+        return res.status(404).json({ 
           success: false, 
-          message: 'You are not authorized. Contact admin' 
+          message: 'User not found. Please contact admin' 
         });
       }
     }

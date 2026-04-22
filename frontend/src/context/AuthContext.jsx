@@ -22,8 +22,8 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const login = async (email, password) => {
-    const { data } = await api.post('/auth/login', { email, password });
+  const login = async (email, password, role) => {
+    const { data } = await api.post('/auth/login', { email, password, role });
     localStorage.setItem('erp_access_token', data.data.accessToken);
     localStorage.setItem('erp_refresh_token', data.data.refreshToken);
     setUser(data.data.user);
