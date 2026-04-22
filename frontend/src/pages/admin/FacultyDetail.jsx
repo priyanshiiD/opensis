@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/axios';
-import { ArrowLeft, User } from 'lucide-react';
+import { ArrowLeft, User, Pencil } from 'lucide-react';
 
 function Field({ label, value }) {
   return (
@@ -29,6 +29,9 @@ export default function FacultyDetail() {
       <div className="flex items-center gap-3 mb-6">
         <Link to="/admin/faculty" className="text-slate-400 hover:text-slate-600"><ArrowLeft className="w-5 h-5" /></Link>
         <h1 className="text-2xl font-bold text-slate-800">Faculty Profile</h1>
+        <Link to={`/admin/faculty/${id}/edit`} className="ml-auto btn-secondary flex items-center gap-2">
+          <Pencil className="w-4 h-4" />Edit Details
+        </Link>
       </div>
       <div className="card mb-4">
         <div className="flex items-center gap-4">

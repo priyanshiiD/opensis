@@ -50,9 +50,9 @@ const autoSeed = async () => {
     await Faculty.findByIdAndUpdate(faculty1._id, { subjectsTaught: [sub1._id, sub2._id] });
     await Faculty.findByIdAndUpdate(faculty2._id, { subjectsTaught: [sub3._id, sub4._id] });
 
-    const makeStudent = async (email, enrollNo, first, last) => {
+    const makeStudent = async (email, enrollNo, first, last, gender = 'female') => {
       const u = await User.create({ email, passwordHash: await hash('Student@123'), role: 'student' });
-      return Student.create({ userId: u._id, enrollmentNo: enrollNo, firstName: first, lastName: last, branch: 'IT', currentSemester: 5, section: 'A', admissionYear: 2022, session: '2024-25', gender: 'female', phone: '9000000001', fatherName: 'Ram ' + last, motherName: 'Sita ' + last });
+      return Student.create({ userId: u._id, enrollmentNo: enrollNo, firstName: first, lastName: last, department: 'IT', year: 3, semester: 'Jul-Dec', section: 'A', admissionYear: 2022, session: '2024-25', gender, phone: '9000000001', fatherName: 'Ram ' + last, motherName: 'Sita ' + last });
     };
 
     const s1 = await makeStudent('alice@student.college.edu', '0801IT221001', 'Alice', 'Patel');

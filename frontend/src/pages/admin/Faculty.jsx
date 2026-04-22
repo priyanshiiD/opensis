@@ -7,14 +7,17 @@ export default function AdminFaculty() {
   const [faculty, setFaculty] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [department, setDepartment] = useState('');
 
   useEffect(() => {
     api.get('/admin/faculty').then(r => setFaculty(r.data.data.faculty)).finally(() => setLoading(false));
   }, []);
 
-  const filtered = search
-    ? faculty.filter(f => `${f.firstName} ${f.lastName} ${f.employeeId}`.toLowerCase().includes(search.toLowerCase()))
-    : faculty;
+  const filtered = faculty.filter(f => {
+    const matchesDept = !department || f.department === department;
+    const matchesSearch = !search || `${f.firstName} ${f.lastName} ${f.employeeId}`.toLowerCase().includes(search.toLowerCase());
+    return matchesDept && matchesSearch;
+  });
 
   return (
     <div>
@@ -27,9 +30,15 @@ export default function AdminFaculty() {
       </div>
 
       <div className="card mb-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input className="input pl-9" placeholder="Search name or employee ID" value={search} onChange={e => setSearch(e.target.value)} />
+        <div className="flex flex-wrap gap-3">
+          <div className="relative flex-1 min-w-48">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input className="input pl-9" placeholder="Search name or employee ID" value={search} onChange={e => setSearch(e.target.value)} />
+          </div>
+          <select className="input w-auto" value={department} onChange={e => setDepartment(e.target.value)}>
+            <option value="">All Departments</option>
+            <option>IT</option><option>CSE</option><option>ECE</option><option>ME</option><option>CE</option>
+          </select>
         </div>
       </div>
 
