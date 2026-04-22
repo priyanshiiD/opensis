@@ -75,7 +75,8 @@ export default function Login() {
     setErrors(e => ({ ...e, login: '' })); // Clear previous login errors
 
     try {
-      const u = await login(form.email, form.password);
+      // Send role along with email and password
+      const u = await login(form.email, form.password, role);
       toast.success(`Welcome back, ${u.profile?.firstName || u.email}!`);
       const redirects = { admin: '/admin/dashboard', student: '/student/dashboard', faculty: '/faculty/dashboard' };
       navigate(redirects[u.role] || '/', { replace: true });
