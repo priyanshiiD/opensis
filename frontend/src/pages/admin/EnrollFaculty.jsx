@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, AlertCircle } from 'lucide-react';
 
 const DEPARTMENTS = ['IT', 'CSE', 'ECE', 'ME', 'CE', 'Mathematics', 'Physics', 'Chemistry'];
 
@@ -14,10 +14,36 @@ export default function EnrollFaculty() {
     phone: '', address: '',
   });
   const [loading, setLoading] = useState(false);
+  const [emailError, setEmailError] = useState('');
+  
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Validate college email format
+  const isValidCollegeEmail = (email) => {
+    const collegeEmailRegex = /^[^\s@]+@[^\s@]+\.edu$/;
+    return collegeEmailRegex.test(email);
+  };
+
+  const handleEmailChange = (e) => {
+    const email = e.target.value;
+    set('email', email);
+    
+    if (email && !isValidCollegeEmail(email)) {
+      setEmailError('Enter a valid college email (e.g., faculty@college.edu)');
+    } else {
+      setEmailError('');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Validate email before submission
+    if (form.email && !isValidCollegeEmail(form.email)) {
+      setEmailError('Enter a valid college email (e.g., faculty@college.edu)');
+      return;
+    }
+
     setLoading(true);
     try {
       await api.post('/admin/faculty', form);
@@ -41,7 +67,23 @@ export default function EnrollFaculty() {
         <div className="card">
           <h2 className="font-semibold text-slate-700 mb-4">Login Credentials</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div><label className="label">Email *</label><input className="input" type="email" value={form.email} onChange={e => set('email', e.target.value)} required /></div>
+            <div>
+              <label className="label">Email *</label>
+              <input 
+                className={`input ${emailError ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20' : ''}`}
+                type="email" 
+                value={form.email} 
+                onChange={handleEmailChange}
+                placeholder="faculty@college.edu"
+                required 
+              />
+              {emailError && (
+                <p className="text-sm font-medium text-red-600 mt-1.5 flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4" />
+                  {emailError}
+                </p>
+              )}
+            </div>
             <div><label className="label">Password</label><input className="input" type="password" value={form.password} onChange={e => set('password', e.target.value)} placeholder="Default: Faculty@123" /></div>
           </div>
         </div>
