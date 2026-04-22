@@ -26,8 +26,6 @@ import EnrollStudent from "./pages/admin/EnrollStudent";
 import Faculty from "./pages/admin/Faculty";
 import FacultyDetail from "./pages/admin/FacultyDetail";
 import EnrollFaculty from "./pages/admin/EnrollFaculty";
-import EditStudent from "./pages/admin/EditStudent";
-import EditFaculty from "./pages/admin/EditFaculty";
 import Subjects from "./pages/admin/Subjects";
 import Notices from "./pages/admin/Notices";
 import AdminExamSchedule from "./pages/admin/ExamSchedule";
@@ -116,11 +114,9 @@ function App() {
           <Route path="/admin/dashboard" element={<ProtectedRoute roles={["admin"]}><AdminLayout><AdminDashboard /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/students" element={<ProtectedRoute roles={["admin"]}><AdminLayout><Students /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/students/:id" element={<ProtectedRoute roles={["admin"]}><AdminLayout><StudentDetail /></AdminLayout></ProtectedRoute>} />
-          <Route path="/admin/students/:id/edit" element={<ProtectedRoute roles={["admin"]}><AdminLayout><EditStudent /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/enroll-student" element={<ProtectedRoute roles={["admin"]}><AdminLayout><EnrollStudent /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/faculty" element={<ProtectedRoute roles={["admin"]}><AdminLayout><Faculty /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/faculty/:id" element={<ProtectedRoute roles={["admin"]}><AdminLayout><FacultyDetail /></AdminLayout></ProtectedRoute>} />
-          <Route path="/admin/faculty/:id/edit" element={<ProtectedRoute roles={["admin"]}><AdminLayout><EditFaculty /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/enroll-faculty" element={<ProtectedRoute roles={["admin"]}><AdminLayout><EnrollFaculty /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/subjects" element={<ProtectedRoute roles={["admin"]}><AdminLayout><Subjects /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/notices" element={<ProtectedRoute roles={["admin"]}><AdminLayout><Notices /></AdminLayout></ProtectedRoute>} />

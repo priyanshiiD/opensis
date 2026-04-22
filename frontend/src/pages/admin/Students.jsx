@@ -9,18 +9,16 @@ export default function AdminStudents() {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [search, setSearch] = useState('');
-  const [department, setDepartment] = useState('');
-  const [year, setYear] = useState('');
-  const [section, setSection] = useState('');
+  const [branch, setBranch] = useState('');
+  const [semester, setSemester] = useState('');
   const [loading, setLoading] = useState(true);
 
   const load = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page, limit: 15 });
-      if (department) params.set('department', department);
-      if (year) params.set('year', year);
-      if (section) params.set('section', section);
+      if (branch) params.set('branch', branch);
+      if (semester) params.set('semester', semester);
       const { data } = await api.get(`/admin/students?${params}`);
       setStudents(data.data.students);
       setTotal(data.data.total);
@@ -30,7 +28,7 @@ export default function AdminStudents() {
     }
   };
 
-  useEffect(() => { load(); }, [page, department, year, section]);
+  useEffect(() => { load(); }, [page, branch, semester]);
 
   const filtered = search
     ? students.filter(s => `${s.firstName} ${s.lastName} ${s.enrollmentNo}`.toLowerCase().includes(search.toLowerCase()))
@@ -54,17 +52,13 @@ export default function AdminStudents() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input className="input pl-9" placeholder="Search name or enrollment no." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <select className="input w-auto" value={department} onChange={e => { setDepartment(e.target.value); setPage(1); }}>
-            <option value="">All Departments</option>
+          <select className="input w-auto" value={branch} onChange={e => { setBranch(e.target.value); setPage(1); }}>
+            <option value="">All Branches</option>
             <option>IT</option><option>CSE</option><option>ECE</option><option>ME</option><option>CE</option>
           </select>
-          <select className="input w-auto" value={year} onChange={e => { setYear(e.target.value); setPage(1); }}>
-            <option value="">All Years</option>
-            {[1,2,3,4].map(y => <option key={y} value={y}>Year {y}</option>)}
-          </select>
-          <select className="input w-auto" value={section} onChange={e => { setSection(e.target.value); setPage(1); }}>
-            <option value="">All Sections</option>
-            {['A','B','C','D'].map(s => <option key={s}>{s}</option>)}
+          <select className="input w-auto" value={semester} onChange={e => { setSemester(e.target.value); setPage(1); }}>
+            <option value="">All Semesters</option>
+            {[1,2,3,4,5,6,7,8].map(s => <option key={s}>{s}</option>)}
           </select>
         </div>
       </div>
@@ -74,7 +68,7 @@ export default function AdminStudents() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-200">
               <tr>
-                {['Enrollment No.', 'Name', 'Department', 'Year / Period', 'Section', 'Gender', ''].map(h => (
+                {['Enrollment No.', 'Name', 'Branch', 'Semester', 'Section', 'Gender', ''].map(h => (
                   <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
@@ -93,8 +87,8 @@ export default function AdminStudents() {
                   <tr key={s._id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-3 font-mono text-xs">{s.enrollmentNo}</td>
                     <td className="px-4 py-3 font-medium">{s.firstName} {s.lastName}</td>
-                    <td className="px-4 py-3"><span className="badge-blue">{s.department}</span></td>
-                    <td className="px-4 py-3">Y{s.year} · {s.semester}</td>
+                    <td className="px-4 py-3"><span className="badge-blue">{s.branch}</span></td>
+                    <td className="px-4 py-3">Sem {s.currentSemester}</td>
                     <td className="px-4 py-3">{s.section || '—'}</td>
                     <td className="px-4 py-3 capitalize">{s.gender || '—'}</td>
                     <td className="px-4 py-3">

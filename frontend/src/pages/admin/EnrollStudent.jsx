@@ -4,22 +4,15 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { ArrowLeft } from 'lucide-react';
 
-const DEPARTMENTS = ['IT', 'CSE', 'ECE', 'ME', 'CE'];
-const YEARS = [1, 2, 3, 4];
-const PERIODS = ['Jul-Dec', 'Jan-May'];
-
-function currentSession() {
-  const now = new Date();
-  const y = now.getFullYear();
-  return now.getMonth() + 1 >= 7 ? `${y}-${String(y + 1).slice(-2)}` : `${y - 1}-${String(y).slice(-2)}`;
-}
+const BRANCHES = ['IT', 'CSE', 'ECE', 'ME', 'CE'];
+const SEMESTERS = [1,2,3,4,5,6,7,8];
 
 export default function EnrollStudent() {
   const navigate = useNavigate();
   const [form, setForm] = useState({
     email: '', password: '', enrollmentNo: '', firstName: '', lastName: '',
-    department: 'IT', year: 1, semester: 'Jul-Dec', section: 'A', admissionYear: new Date().getFullYear(),
-    session: currentSession(), gender: 'female', phone: '', fatherName: '', motherName: '', address: '', dob: '',
+    branch: 'IT', currentSemester: 1, section: 'A', admissionYear: new Date().getFullYear(),
+    session: '2024-25', gender: 'female', phone: '', fatherName: '', motherName: '', address: '', dob: '',
   });
   const [loading, setLoading] = useState(false);
 
@@ -78,24 +71,19 @@ export default function EnrollStudent() {
           <h2 className="font-semibold text-slate-700 mb-4">Academic Details</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="label">Enrollment No. *</label><input className="input font-mono" value={form.enrollmentNo} onChange={e => set('enrollmentNo', e.target.value)} required placeholder="0801IT221001" /></div>
-            <div><label className="label">Department *</label>
-              <select className="input" value={form.department} onChange={e => set('department', e.target.value)}>
-                {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
+            <div><label className="label">Branch *</label>
+              <select className="input" value={form.branch} onChange={e => set('branch', e.target.value)}>
+                {BRANCHES.map(b => <option key={b}>{b}</option>)}
               </select>
             </div>
-            <div><label className="label">Year *</label>
-              <select className="input" value={form.year} onChange={e => set('year', Number(e.target.value))}>
-                {YEARS.map(y => <option key={y} value={y}>Year {y}</option>)}
-              </select>
-            </div>
-            <div><label className="label">Semester Period *</label>
-              <select className="input" value={form.semester} onChange={e => set('semester', e.target.value)}>
-                {PERIODS.map(p => <option key={p}>{p}</option>)}
+            <div><label className="label">Current Semester *</label>
+              <select className="input" value={form.currentSemester} onChange={e => set('currentSemester', Number(e.target.value))}>
+                {SEMESTERS.map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
             <div><label className="label">Section</label><input className="input" value={form.section} onChange={e => set('section', e.target.value)} /></div>
             <div><label className="label">Admission Year</label><input className="input" type="number" value={form.admissionYear} onChange={e => set('admissionYear', Number(e.target.value))} /></div>
-            <div><label className="label">Session</label><input className="input" value={form.session} onChange={e => set('session', e.target.value)} placeholder="2025-26" /></div>
+            <div><label className="label">Session</label><input className="input" value={form.session} onChange={e => set('session', e.target.value)} placeholder="2024-25" /></div>
           </div>
         </div>
 
