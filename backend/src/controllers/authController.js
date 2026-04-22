@@ -17,14 +17,55 @@ const getProfile = async (userId, role) => {
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, message: 'Email and password required' });
+    
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Email and password are required' 
+      });
+    }
 
+    // Find user by email
     const user = await User.findOne({ email });
-    if (!user || !user.isActive) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    if (!user) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'User not found. Please contact admin' 
+      });
+    }
 
+    // Check if user is active
+    if (!user.isActive) {
+      return res.status(403).json({ 
+        success: false, 
+        message: 'Your account has been deactivated. Please contact admin' 
+      });
+    }
+
+    // Verify password
     const valid = await user.comparePassword(password);
-    if (!valid) return res.status(401).json({ success: false, message: 'Invalid credentials' });
+    if (!valid) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Incorrect password' 
+      });
+    }
 
+    // Check enrollment for student and faculty roles
+    if (user.role === 'student' || user.role === 'faculty') {
+      const ModelClass = user.role === 'student' ? Student : Faculty;
+      const profile = await ModelClass.findOne({ userId: user._id });
+      
+      if (!profile) {
+        return res.status(403).json({ 
+          success: false, 
+          message: 'You are not authorized. Contact admin' 
+        });
+      }
+    }
+
+    // Generate tokens
     const accessToken = signAccess(user._id, user.role);
     const refreshToken = signRefresh(user._id);
     const profile = await getProfile(user._id, user.role);
@@ -38,7 +79,10 @@ exports.login = async (req, res) => {
       },
     });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error. Please try again later.' 
+    });
   }
 };
 

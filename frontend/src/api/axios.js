@@ -28,8 +28,18 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
-    const message = err.response?.data?.message || 'Something went wrong';
-    if (err.response?.status !== 401) toast.error(message);
+    
+    // Don't show toast for login/auth related errors (they are handled by the component)
+    const isAuthError = err.config?.url?.includes('/auth/login') || 
+                       err.config?.url?.includes('/auth/refresh') ||
+                       err.response?.status === 401 ||
+                       err.response?.status === 404;
+    
+    if (!isAuthError) {
+      const message = err.response?.data?.message || 'Something went wrong';
+      toast.error(message);
+    }
+    
     return Promise.reject(err);
   }
 );
