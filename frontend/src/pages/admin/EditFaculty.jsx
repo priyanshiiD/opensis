@@ -1,112 +1,87 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { ArrowLeft, BookOpen, AlertCircle } from 'lucide-react';
+import { ArrowLeft, BookOpen } from 'lucide-react';
 
-const DEPARTMENTS = ['IT', 'CSE', 'ECE', 'ME', 'CE', 'Mathematics', 'Physics', 'Chemistry'];
+const DEPARTMENTS = ['IT', 'CSE', 'ECE', 'ME', 'CE'];
 
-export default function EnrollFaculty() {
+export default function EditFaculty() {
+  const { id } = useParams();
   const navigate = useNavigate();
-  const [form, setForm] = useState({
-    email: '', password: '', employeeId: '', firstName: '', lastName: '',
-    department: 'IT', designation: '', qualification: '', joiningDate: '',
-    phone: '', address: '',
-  });
+  const [form, setForm] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
   const [subjectIds, setSubjectIds] = useState([]);
   const [availableSubjects, setAvailableSubjects] = useState([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [emailError, setEmailError] = useState('');
+  const isInitialSubjectLoad = useRef(true);
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-
-  const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.edu$/.test(email);
-
-  const handleEmailChange = (e) => {
-    const email = e.target.value;
-    set('email', email);
-    if (email && !isValidEmail(email)) {
-      setEmailError('Enter a valid college email (e.g., name@college.edu)');
-    } else {
-      setEmailError('');
-    }
-  };
-
-  // Load subjects whenever department changes
   useEffect(() => {
-    setSubjectIds([]);
+    api.get(`/admin/faculty/${id}`).then(r => {
+      const f = r.data.data.faculty;
+      setForm({
+        firstName: f.firstName || '',
+        lastName: f.lastName || '',
+        phone: f.phone || '',
+        address: f.address || '',
+        department: f.department || 'IT',
+        designation: f.designation || '',
+        qualification: f.qualification || '',
+        joiningDate: f.joiningDate ? f.joiningDate.slice(0, 10) : '',
+      });
+      const assignedIds = (f.subjectsTaught || []).map(s => (typeof s === 'object' ? s._id : s));
+      setSubjectIds(assignedIds);
+    }).finally(() => setLoading(false));
+  }, [id]);
+
+  // Reload subjects when department changes; clear selection only on explicit dept change (not initial load)
+  useEffect(() => {
+    if (!form) return;
+    if (!isInitialSubjectLoad.current) setSubjectIds([]);
+    isInitialSubjectLoad.current = false;
     setLoadingSubjects(true);
     api.get(`/admin/subjects?branch=${form.department}`)
       .then(r => setAvailableSubjects(r.data.data.subjects))
       .finally(() => setLoadingSubjects(false));
-  }, [form.department]);
+  }, [form?.department]);
 
-  const toggleSubject = (id) => {
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const toggleSubject = (sid) => {
     setSubjectIds(prev =>
-      prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id]
+      prev.includes(sid) ? prev.filter(s => s !== sid) : [...prev, sid]
     );
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (form.email && !isValidEmail(form.email)) {
-      setEmailError('Enter a valid college email (e.g., name@college.edu)');
-      return;
-    }
-    setLoading(true);
+    setSaving(true);
     try {
-      await api.post('/admin/faculty', { ...form, subjectIds });
-      toast.success('Faculty enrolled successfully!');
-      navigate('/admin/faculty');
+      await api.patch(`/admin/faculty/${id}`, { ...form, subjectIds });
+      toast.success('Faculty updated successfully!');
+      navigate(`/admin/faculty/${id}`);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Enrollment failed');
+      toast.error(err.response?.data?.message || 'Update failed');
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
+  if (loading) return <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" /></div>;
+
   return (
-    <div className="max-w-3xl">
+    <div className="max-w-2xl">
       <div className="flex items-center gap-3 mb-6">
-        <Link to="/admin/faculty" className="text-slate-400 hover:text-slate-600"><ArrowLeft className="w-5 h-5" /></Link>
+        <Link to={`/admin/faculty/${id}`} className="text-slate-400 hover:text-slate-600"><ArrowLeft className="w-5 h-5" /></Link>
         <div>
-          <h1 className="text-2xl font-bold text-slate-800">Enroll Faculty</h1>
-          <p className="text-slate-500 text-sm">Add a new faculty member</p>
+          <h1 className="text-2xl font-bold text-slate-800">Edit Faculty</h1>
+          <p className="text-slate-500 text-sm">Email and Employee ID cannot be changed here</p>
         </div>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-6">
-
-        {/* Login Credentials */}
-        <div className="card">
-          <h2 className="font-semibold text-slate-700 mb-4">Login Credentials</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label">Email *</label>
-              <input
-                className={`input ${emailError ? 'border-red-300 focus:border-red-500 focus:ring-red-500/20' : ''}`}
-                type="email"
-                value={form.email}
-                onChange={handleEmailChange}
-                placeholder="faculty@college.edu"
-                required
-              />
-              {emailError && (
-                <p className="text-sm font-medium text-red-600 mt-1.5 flex items-center gap-1">
-                  <AlertCircle className="w-4 h-4" />
-                  {emailError}
-                </p>
-              )}
-            </div>
-            <div>
-              <label className="label">Password</label>
-              <input className="input" type="password" value={form.password} onChange={e => set('password', e.target.value)} placeholder="Default: Faculty@123" />
-            </div>
-          </div>
-        </div>
-
-        {/* Personal Details */}
         <div className="card">
           <h2 className="font-semibold text-slate-700 mb-4">Personal Details</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -117,50 +92,46 @@ export default function EnrollFaculty() {
           </div>
         </div>
 
-        {/* Professional Details */}
         <div className="card">
           <h2 className="font-semibold text-slate-700 mb-4">Professional Details</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label">Employee ID *</label>
-              <input className="input font-mono" value={form.employeeId} onChange={e => set('employeeId', e.target.value)} required placeholder="EMP001" />
-            </div>
             <div>
               <label className="label">Department *</label>
               <select className="input" value={form.department} onChange={e => set('department', e.target.value)}>
                 {DEPARTMENTS.map(d => <option key={d}>{d}</option>)}
               </select>
             </div>
-            <div><label className="label">Designation</label><input className="input" value={form.designation} onChange={e => set('designation', e.target.value)} placeholder="Associate Professor" /></div>
-            <div><label className="label">Qualification</label><input className="input" value={form.qualification} onChange={e => set('qualification', e.target.value)} placeholder="M.Tech / Ph.D" /></div>
+            <div><label className="label">Designation</label><input className="input" value={form.designation} onChange={e => set('designation', e.target.value)} placeholder="e.g. Associate Professor" /></div>
+            <div><label className="label">Qualification</label><input className="input" value={form.qualification} onChange={e => set('qualification', e.target.value)} placeholder="e.g. M.Tech, Ph.D" /></div>
             <div><label className="label">Joining Date</label><input className="input" type="date" value={form.joiningDate} onChange={e => set('joiningDate', e.target.value)} /></div>
           </div>
         </div>
 
-        {/* Subject Assignment */}
         <div className="card">
           <div className="flex items-center gap-2 mb-1">
             <BookOpen className="w-4 h-4 text-primary-600" />
-            <h2 className="font-semibold text-slate-700">Assign Subjects</h2>
+            <h2 className="font-semibold text-slate-700">Assigned Subjects</h2>
             {subjectIds.length > 0 && (
               <span className="ml-auto text-xs bg-primary-100 text-primary-700 font-semibold px-2 py-0.5 rounded-full">
                 {subjectIds.length} selected
               </span>
             )}
           </div>
-          <p className="text-xs text-slate-400 mb-4">Subjects listed below are from the <strong>{form.department}</strong> department. Change department above to see others.</p>
+          <p className="text-xs text-slate-400 mb-4">
+            Showing subjects from <strong>{form.department}</strong>. Change department above to see others.
+          </p>
 
           {loadingSubjects ? (
             <div className="space-y-2">
               {[...Array(3)].map((_, i) => <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />)}
             </div>
           ) : availableSubjects.length === 0 ? (
-            <p className="text-sm text-slate-400 italic">No subjects found for {form.department}. Add subjects first from the Subjects page.</p>
+            <p className="text-sm text-slate-400 italic">No subjects found for {form.department}.</p>
           ) : (
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
               {availableSubjects.map(s => {
                 const checked = subjectIds.includes(s._id);
-                const alreadyAssigned = s.facultyId && !checked;
+                const otherFaculty = s.facultyId && String(s.facultyId._id || s.facultyId) !== id && !checked;
                 return (
                   <label
                     key={s._id}
@@ -182,7 +153,7 @@ export default function EnrollFaculty() {
                         <span className="text-sm font-medium text-slate-700 truncate">{s.name}</span>
                         <span className="text-xs text-slate-400 ml-auto shrink-0">Sem {s.semester} · {s.credits} cr.</span>
                       </div>
-                      {alreadyAssigned && (
+                      {otherFaculty && (
                         <p className="text-xs text-amber-600 mt-0.5">
                           Currently: {s.facultyId.firstName} {s.facultyId.lastName}
                         </p>
@@ -196,12 +167,9 @@ export default function EnrollFaculty() {
         </div>
 
         <div className="flex gap-3">
-          <button type="submit" disabled={loading} className="btn-primary">
-            {loading ? 'Enrolling...' : `Enroll Faculty${subjectIds.length > 0 ? ` & Assign ${subjectIds.length} Subject${subjectIds.length > 1 ? 's' : ''}` : ''}`}
-          </button>
-          <Link to="/admin/faculty" className="btn-secondary">Cancel</Link>
+          <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Saving...' : 'Save Changes'}</button>
+          <Link to={`/admin/faculty/${id}`} className="btn-secondary">Cancel</Link>
         </div>
-
       </form>
     </div>
   );

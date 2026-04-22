@@ -7,13 +7,19 @@ router.use(authenticate, authorize('admin'));
 router.post('/students', ctrl.enrollStudent);
 router.get('/students', ctrl.getStudents);
 router.get('/students/:id', ctrl.getStudent);
+router.patch('/students/:id', ctrl.updateStudent);
+router.delete('/students/:id', ctrl.deleteStudent);
 
 router.post('/faculty', ctrl.enrollFaculty);
 router.get('/faculty', ctrl.getFaculty);
 router.get('/faculty/:id', ctrl.getFacultyById);
+router.patch('/faculty/:id', ctrl.updateFaculty);
+router.delete('/faculty/:id', ctrl.deleteFaculty);
 
 router.post('/subjects', ctrl.createSubject);
 router.get('/subjects', ctrl.getSubjects);
+router.patch('/subjects/:id', ctrl.updateSubject);
+router.delete('/subjects/:id', ctrl.deleteSubject);
 
 router.post('/notices', ctrl.createNotice);
 router.get('/notices', ctrl.getNotices);

@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import api from '../../api/axios';
-import { ArrowLeft, User } from 'lucide-react';
+import { ArrowLeft, User, Pencil } from 'lucide-react';
 
 function Field({ label, value }) {
   return (
     <div>
       <p className="text-xs text-slate-500 uppercase tracking-wide font-medium">{label}</p>
-      <p className="text-sm text-slate-800 mt-0.5">{value || '—'}</p>
+      <p className="text-sm text-slate-800 mt-0.5 break-all">{value || '—'}</p>
     </div>
   );
 }
@@ -29,6 +29,9 @@ export default function StudentDetail() {
       <div className="flex items-center gap-3 mb-6">
         <Link to="/admin/students" className="text-slate-400 hover:text-slate-600"><ArrowLeft className="w-5 h-5" /></Link>
         <h1 className="text-2xl font-bold text-slate-800">Student Profile</h1>
+        <Link to={`/admin/students/${id}/edit`} className="ml-auto btn-secondary flex items-center gap-2">
+          <Pencil className="w-4 h-4" />Edit Details
+        </Link>
       </div>
 
       <div className="card mb-4">
@@ -39,6 +42,7 @@ export default function StudentDetail() {
           <div>
             <h2 className="text-xl font-semibold text-slate-800">{student.firstName} {student.lastName}</h2>
             <p className="text-slate-500 text-sm font-mono">{student.enrollmentNo}</p>
+            <p className="text-slate-400 text-xs mt-0.5">{student.email || '—'}</p>
           </div>
           <div className="ml-auto flex gap-2">
             <span className="badge-blue">{student.branch}</span>
@@ -51,6 +55,7 @@ export default function StudentDetail() {
         <div className="card">
           <h3 className="font-semibold text-slate-700 mb-4">Personal Info</h3>
           <div className="space-y-3">
+            <Field label="Email" value={student.email} />
             <Field label="Gender" value={student.gender} />
             <Field label="Date of Birth" value={student.dob ? new Date(student.dob).toLocaleDateString() : null} />
             <Field label="Phone" value={student.phone} />
@@ -63,7 +68,7 @@ export default function StudentDetail() {
           <h3 className="font-semibold text-slate-700 mb-4">Academic Info</h3>
           <div className="space-y-3">
             <Field label="Branch" value={student.branch} />
-            <Field label="Semester" value={student.currentSemester} />
+            <Field label="Current Semester" value={student.currentSemester} />
             <Field label="Section" value={student.section} />
             <Field label="Session" value={student.session} />
             <Field label="Admission Year" value={student.admissionYear} />
