@@ -1,7 +1,7 @@
 import axios from 'axios';
 import toast from 'react-hot-toast';
 
-const api = axios.create({ baseURL: '/api' });
+const api = axios.create({ baseURL: import.meta.env.VITE_BACKEND_URL + '/api' });
 
 api.interceptors.request.use(config => {
   const token = localStorage.getItem('erp_access_token');
@@ -18,7 +18,7 @@ api.interceptors.response.use(
       try {
         const refresh = localStorage.getItem('erp_refresh_token');
         if (!refresh) throw new Error('No refresh token');
-        const { data } = await axios.post('/api/auth/refresh', { refreshToken: refresh });
+        const { data } = await axios.post(import.meta.env.VITE_BACKEND_URL + '/api/auth/refresh', { refreshToken: refresh });
         localStorage.setItem('erp_access_token', data.data.accessToken);
         original.headers.Authorization = `Bearer ${data.data.accessToken}`;
         return api(original);
