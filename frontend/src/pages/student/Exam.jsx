@@ -13,6 +13,8 @@ export default function StudentExam() {
   const [loading, setLoading] = useState(true);
   const [admitCard, setAdmitCard] = useState(null);
   const [loadingAdmit, setLoadingAdmit] = useState(false);
+  const [resultSemester, setResultSemester] = useState('');
+  const [loadingResults, setLoadingResults] = useState(false);
   const admitRef = useRef(null);
 
   const handlePrintAdmit = useReactToPrint({ contentRef: admitRef });
@@ -34,6 +36,19 @@ export default function StudentExam() {
       api.get('/student/result').then(r => setResults(r.data.data.results)),
     ]).finally(() => setLoading(false));
   }, []);
+
+  const loadResults = async (semesterValue = resultSemester) => {
+    setLoadingResults(true);
+    try {
+      const semester = String(semesterValue || '').trim();
+      const endpoint = semester ? `/student/result?semester=${encodeURIComponent(semester)}` : '/student/result';
+      const { data } = await api.get(endpoint);
+      setResults(data.data.results || []);
+    } catch {
+      toast.error('Failed to load results');
+    }
+    setLoadingResults(false);
+  };
 
   const handleRevaluation = async (e) => {
     e.preventDefault();
@@ -167,56 +182,107 @@ export default function StudentExam() {
 
       {/* Results Tab */}
       {tab === 'results' && (
-        results.length === 0 ? (
-          <div className="card text-center py-12">
-            <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-            <p className="text-slate-500">No results available yet</p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {results.map(r => (
-              <div key={r._id} className="card">
-                <div className="flex items-center justify-between mb-4">
-                  <div>
-                    <h3 className="font-semibold text-slate-800">Semester {r.semester}</h3>
-                    <p className="text-xs text-slate-500">Session: {r.session}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-2xl font-bold text-primary-600">{r.sgpa}</p>
-                    <p className="text-xs text-slate-500">SGPA</p>
-                    <span className={`mt-1 inline-block ${r.status === 'pass' ? 'badge-green' : 'badge-red'}`}>{r.status?.toUpperCase()}</span>
-                  </div>
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-100">
-                        <th className="text-left py-2 text-slate-500 font-medium">Subject</th>
-                        <th className="text-center py-2 text-slate-500 font-medium">Internal</th>
-                        <th className="text-center py-2 text-slate-500 font-medium">External</th>
-                        <th className="text-center py-2 text-slate-500 font-medium">Total</th>
-                        <th className="text-center py-2 text-slate-500 font-medium">Grade</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {(r.subjectMarks || []).map((sm, i) => (
-                        <tr key={i} className="border-b border-slate-50">
-                          <td className="py-2 text-slate-800">{sm.subjectId?.name || '—'}<br /><span className="text-xs text-slate-400">{sm.subjectId?.code}</span></td>
-                          <td className="py-2 text-center text-slate-600">{sm.internalMarks ?? '—'}</td>
-                          <td className="py-2 text-center text-slate-600">{sm.externalMarks ?? '—'}</td>
-                          <td className="py-2 text-center font-medium text-slate-800">{sm.totalMarks ?? '—'}</td>
-                          <td className="py-2 text-center">
-                            <span className={`${(sm.totalMarks || 0) >= 40 ? 'badge-green' : 'badge-red'}`}>{sm.grade}</span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+        <div className="space-y-4">
+          <div className="card">
+            <div className="flex flex-col sm:flex-row sm:items-end gap-3">
+              <div className="w-full sm:w-52">
+                <label className="label">Semester</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="8"
+                  className="input"
+                  placeholder="Enter semester"
+                  value={resultSemester}
+                  onChange={e => setResultSemester(e.target.value)}
+                />
               </div>
-            ))}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={loadingResults}
+                  onClick={() => loadResults()}
+                >
+                  {loadingResults ? 'Loading...' : 'Load Result'}
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  disabled={loadingResults}
+                  onClick={() => {
+                    setResultSemester('');
+                    loadResults('');
+                  }}
+                >
+                  Current Sem
+                </button>
+              </div>
+            </div>
           </div>
-        )
+
+          {results.length === 0 ? (
+            <div className="card text-center py-12">
+              <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500">No results found for the selected semester</p>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {results.map(r => (
+                <div key={r._id} className="card">
+                  <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-200">
+                    <div>
+                      <h3 className="font-semibold text-slate-800">Semester {r.semester}</h3>
+                      <p className="text-xs text-slate-500">Session: {r.session}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className="grid grid-cols-3 gap-4">
+                        <div>
+                          <p className="text-2xl font-bold text-primary-600">{r.sgpa || '—'}</p>
+                          <p className="text-xs text-slate-500">SGPA</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-bold text-amber-600">{r.percentage ? r.percentage.toFixed(1) : '—'}%</p>
+                          <p className="text-xs text-slate-500">Percentage</p>
+                        </div>
+                        <div>
+                          <span className={`mt-1 inline-block ${r.status === 'pass' ? 'badge-green' : 'badge-red'}`}>{r.status?.toUpperCase() || 'PENDING'}</span>
+                          <p className="text-xs text-slate-500 mt-1">Status</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-100">
+                          <th className="text-left py-2 text-slate-500 font-medium">Subject</th>
+                          <th className="text-center py-2 text-slate-500 font-medium">Internal</th>
+                          <th className="text-center py-2 text-slate-500 font-medium">External</th>
+                          <th className="text-center py-2 text-slate-500 font-medium">Total</th>
+                          <th className="text-center py-2 text-slate-500 font-medium">Grade</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {(r.subjectMarks || []).map((sm, i) => (
+                          <tr key={i} className="border-b border-slate-50">
+                            <td className="py-2 text-slate-800">{sm.subjectId?.name || '—'}<br /><span className="text-xs text-slate-400">{sm.subjectId?.code}</span></td>
+                            <td className="py-2 text-center text-slate-600">{sm.internalMarks ?? '—'}</td>
+                            <td className="py-2 text-center text-slate-600">{sm.externalMarks ?? '—'}</td>
+                            <td className="py-2 text-center font-medium text-slate-800">{sm.totalMarks ?? '—'}</td>
+                            <td className="py-2 text-center">
+                              <span className={`${(sm.totalMarks || 0) >= 40 ? 'badge-green' : 'badge-red'}`}>{sm.grade}</span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
       )}
 
       {/* Revaluation Tab */}

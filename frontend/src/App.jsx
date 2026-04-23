@@ -32,6 +32,7 @@ import Subjects from "./pages/admin/Subjects";
 import Notices from "./pages/admin/Notices";
 import AdminExamSchedule from "./pages/admin/ExamSchedule";
 import AdminClassSchedule from "./pages/admin/ClassSchedule";
+import AdminResults from "./pages/admin/Results";
 
 // Student pages
 import StudentDashboard from "./pages/student/Dashboard";
@@ -60,6 +61,7 @@ const adminNav = [
   { path: "/admin/students", label: "Students", icon: GraduationCap },
   { path: "/admin/faculty", label: "Faculty", icon: UserCheck },
   { path: "/admin/subjects", label: "Subjects", icon: BookOpen },
+  { path: "/admin/results", label: "Results", icon: BarChart3 },
   { path: "/admin/notices", label: "Notices", icon: Bell },
   { path: "/admin/exam-schedule", label: "Exam Schedule", icon: Calendar },
   { path: "/admin/class-schedule", label: "Class Schedule", icon: Clock },
@@ -102,7 +104,7 @@ function App() {
   return (
     <AuthProvider>
       <Toaster position="top-right" />
-      <BrowserRouter>
+      <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <Routes>
           {/* Public */}
           <Route path="/login" element={<Login />} />
@@ -126,6 +128,7 @@ function App() {
           <Route path="/admin/notices" element={<ProtectedRoute roles={["admin"]}><AdminLayout><Notices /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/exam-schedule" element={<ProtectedRoute roles={["admin"]}><AdminLayout><AdminExamSchedule /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/class-schedule" element={<ProtectedRoute roles={["admin"]}><AdminLayout><AdminClassSchedule /></AdminLayout></ProtectedRoute>} />
+          <Route path="/admin/results" element={<ProtectedRoute roles={["admin"]}><AdminLayout><AdminResults /></AdminLayout></ProtectedRoute>} />
 
           {/* Student Routes */}
           <Route path="/student/dashboard" element={<ProtectedRoute roles={["student"]}><StudentLayout><StudentDashboard /></StudentLayout></ProtectedRoute>} />

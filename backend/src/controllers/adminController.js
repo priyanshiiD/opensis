@@ -7,6 +7,7 @@ const Notice = require('../models/Notice');
 const ExamSchedule = require('../models/ExamSchedule');
 const ClassSchedule = require('../models/ClassSchedule');
 const Fee = require('../models/Fee');
+const Result = require('../models/Result');
 const Admin = require('../models/Admin');
 
 // Students
@@ -343,6 +344,74 @@ exports.getFees = async (req, res) => {
   try {
     const fees = await Fee.find().populate('studentId', 'firstName lastName enrollmentNo').lean();
     res.json({ success: true, data: { fees } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Result Management
+exports.getResults = async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.semester) filter.semester = Number(req.query.semester);
+    if (req.query.session) filter.session = req.query.session;
+    const results = await Result.find(filter)
+      .populate('studentId', 'firstName lastName enrollmentNo branch')
+      .populate('subjectMarks.subjectId', 'code name credits')
+      .sort({ createdAt: -1 })
+      .lean();
+    res.json({ success: true, data: { results } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.calculatePercentage = async (req, res) => {
+  try {
+    const { semester, session } = req.body;
+    if (!semester || !session) return res.status(400).json({ success: false, message: 'Semester and session required' });
+    
+    const results = await Result.find({ semester, session })
+      .populate('subjectMarks.subjectId', 'credits')
+      .lean();
+    
+    const updated = [];
+    for (const result of results) {
+      const subjectMarks = result.subjectMarks || [];
+      
+      // Check if all subjects have marks
+      if (subjectMarks.length === 0 || subjectMarks.some(s => !s.totalMarks)) {
+        continue;
+      }
+      
+      // Calculate total marks and total credits
+      let totalMarksWeighted = 0;
+      let totalCredits = 0;
+      let allPassing = true;
+      
+      for (const sm of subjectMarks) {
+        const credits = sm.subjectId?.credits || 3;
+        const marks = sm.totalMarks || 0;
+        totalMarksWeighted += marks * credits;
+        totalCredits += credits;
+        if (marks < 40) allPassing = false;
+      }
+      
+      // Calculate percentage and SGPA
+      const percentage = totalCredits > 0 ? ((totalMarksWeighted / totalCredits) / 100).toFixed(2) * 100 : 0;
+      const sgpa = totalCredits > 0 ? (totalMarksWeighted / totalCredits / 10).toFixed(2) : 0;
+      const status = allPassing ? 'pass' : 'fail';
+      
+      await Result.findByIdAndUpdate(result._id, {
+        sgpa,
+        percentage: Number(percentage),
+        status,
+      });
+      
+      updated.push({ studentId: result.studentId, sgpa, percentage, status });
+    }
+    
+    res.json({ success: true, message: `Processed ${updated.length} results`, data: { updated } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

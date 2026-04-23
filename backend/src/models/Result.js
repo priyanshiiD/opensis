@@ -12,6 +12,7 @@ const resultSchema = new mongoose.Schema({
     grade: String,
   }],
   sgpa: Number,
+  percentage: Number,
   status: { type: String, enum: ['pass', 'fail'], default: 'pass' },
 }, { timestamps: true });
 
