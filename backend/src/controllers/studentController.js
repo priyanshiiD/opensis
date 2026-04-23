@@ -131,8 +131,18 @@ exports.getExamSchedule = async (req, res) => {
 exports.getResult = async (req, res) => {
   try {
     const student = await Student.findOne({ userId: req.user._id });
-    const results = await Result.find({ studentId: student._id })
+    const requestedSemester = Number(req.query.semester);
+    const query = { studentId: student._id };
+
+    if (Number.isInteger(requestedSemester) && requestedSemester > 0) {
+      query.semester = requestedSemester;
+    } else {
+      query.semester = student.currentSemester;
+    }
+
+    const results = await Result.find(query)
       .populate('subjectMarks.subjectId', 'code name')
+      .sort({ semester: -1, createdAt: -1 })
       .lean();
     res.json({ success: true, data: { results } });
   } catch (err) {
