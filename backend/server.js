@@ -104,7 +104,15 @@ const autoSeed = async () => {
 
 connectDB().then(() => autoSeed()).catch(err => console.error('Auto-seed error:', err));
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+// Enable CORS for specific origin
+const corsOptions = {
+  origin: process.env.CLIENT_URL || 'http://localhost:5173', // Use environment variable for frontend URL
+  methods: ['GET', 'POST', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true // Allow credentials (cookies, etc.)
+};
+app.use(cors(corsOptions));
+
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'src/uploads')));
 
