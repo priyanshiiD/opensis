@@ -9,6 +9,10 @@ const ClassSchedule = require('../models/ClassSchedule');
 const Fee = require('../models/Fee');
 const Result = require('../models/Result');
 const Admin = require('../models/Admin');
+const { createStudentWorkbook, createFacultyWorkbook } = require('../utils/excelExport');
+const xlsx = require('xlsx');
+const path = require('path');
+const fs = require('fs');
 
 // Students
 exports.enrollStudent = async (req, res) => {
@@ -64,7 +68,7 @@ exports.getStudent = async (req, res) => {
 
 exports.updateStudent = async (req, res) => {
   try {
-    const allowed = ['firstName', 'lastName', 'dob', 'gender', 'phone', 'address', 'fatherName', 'motherName', 'branch', 'currentSemester', 'section', 'admissionYear', 'session', 'profilePhotoUrl'];
+    const allowed = ['enrollmentNo','firstName', 'lastName', 'dob', 'gender', 'phone', 'address', 'fatherName', 'motherName', 'branch', 'currentSemester', 'section', 'admissionYear', 'session', 'profilePhotoUrl'];
     const update = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
     const student = await Student.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
@@ -89,7 +93,7 @@ exports.deleteStudent = async (req, res) => {
 // Faculty
 exports.enrollFaculty = async (req, res) => {
   try {
-    const { email, password, employeeId, firstName, lastName, department, designation, qualification, joiningDate, phone, address, subjectIds } = req.body;
+    const { email, password, employeeId, firstName, lastName, department, designation, qualification, joiningDate, phone, address, subjectIds, personalEmail, gender, experience } = req.body;
 
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ success: false, message: 'Email already in use' });
@@ -98,7 +102,7 @@ exports.enrollFaculty = async (req, res) => {
     const user = await User.create({ email, passwordHash, role: 'faculty' });
 
     const assignedSubjects = Array.isArray(subjectIds) ? subjectIds.filter(Boolean) : [];
-    const faculty = await Faculty.create({ userId: user._id, employeeId, firstName, lastName, department, designation, qualification, joiningDate, phone, address, subjectsTaught: assignedSubjects });
+    const faculty = await Faculty.create({ userId: user._id, employeeId, firstName, lastName, department, designation, qualification, joiningDate, phone, address, personalEmail, gender, experience, subjectsTaught: assignedSubjects });
 
     if (assignedSubjects.length > 0) {
       await Subject.updateMany({ _id: { $in: assignedSubjects } }, { facultyId: faculty._id });
@@ -133,7 +137,7 @@ exports.getFacultyById = async (req, res) => {
 
 exports.updateFaculty = async (req, res) => {
   try {
-    const allowed = ['firstName', 'lastName', 'phone', 'address', 'department', 'designation', 'qualification', 'joiningDate', 'profilePhotoUrl'];
+    const allowed = ['firstName', 'lastName', 'personalEmail', 'phone', 'address', 'gender', 'department', 'designation', 'qualification', 'experience', 'joiningDate', 'profilePhotoUrl', 'signatureUrl'];
     const update = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
 
@@ -181,6 +185,153 @@ exports.deleteFaculty = async (req, res) => {
     if (!faculty) return res.status(404).json({ success: false, message: 'Faculty not found' });
     await User.findByIdAndDelete(faculty.userId);
     res.json({ success: true, message: 'Faculty deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Bulk upload students via Excel
+exports.bulkUploadStudents = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
+
+    const workbook = xlsx.readFile(req.file.path, { cellDates: true });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+
+    const results = { success: [], failed: [] };
+
+    for (const [idx, row] of rows.entries()) {
+      try {
+        const rollNo = String(row.rollNo || row.RollNo || row.Roll || row.Roll_No || '').trim();
+        const fullName = String(row.fullName || row.FullName || row.name || row.Name || '').trim();
+        const email = String(row.email || row.Email || '').trim().toLowerCase();
+        const branch = String(row.branch || row.Branch || '').trim();
+        const semester = row.semester || row.Sem || row.Semester || '';
+
+        if (!rollNo || !fullName || !email || !branch || !semester) {
+          results.failed.push({ row: idx + 2, reason: 'Missing required field(s)', data: row });
+          continue;
+        }
+
+        // duplicate checks
+        const dupEmail = await User.findOne({ email });
+        const dupRoll = await Student.findOne({ enrollmentNo: rollNo });
+        if (dupEmail) {
+          results.failed.push({ row: idx + 2, reason: 'Duplicate email', data: { email } });
+          continue;
+        }
+        if (dupRoll) {
+          results.failed.push({ row: idx + 2, reason: 'Duplicate rollNo', data: { rollNo } });
+          continue;
+        }
+
+        // split full name
+        const parts = fullName.split(/\s+/);
+        const firstName = parts.shift();
+        const lastName = parts.join(' ') || '';
+
+        // generate username (ensure unique)
+        const base = (email.split('@')[0] || `${firstName}.${lastName}`.replace(/\s+/g, '.')).toLowerCase().replace(/[^a-z0-9\.]/g, '');
+        let username = base;
+        let i = 0;
+        while (await User.findOne({ username })) {
+          i += 1;
+          username = `${base}${i}`;
+        }
+
+        const defaultPassword = 'Welcome@123';
+        const passwordHash = await bcrypt.hash(defaultPassword, 12);
+
+        const user = await User.create({ email, passwordHash, role: 'student', username });
+
+        const student = await Student.create({
+          userId: user._id,
+          enrollmentNo: rollNo,
+          firstName,
+          lastName,
+          branch,
+          currentSemester: Number(semester),
+        });
+
+        results.success.push({ row: idx + 2, userId: user._id, studentId: student._id, email, rollNo });
+      } catch (errRow) {
+        results.failed.push({ row: idx + 2, reason: errRow.message || 'Failed to process row', data: row });
+      }
+    }
+
+    // remove uploaded file
+    try { fs.unlinkSync(req.file.path); } catch (e) { }
+
+    res.json({ success: true, data: results });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Bulk upload faculty via Excel
+exports.bulkUploadFaculty = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
+
+    const workbook = xlsx.readFile(req.file.path, { cellDates: true });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+
+    const results = { success: [], failed: [] };
+
+    for (const [idx, row] of rows.entries()) {
+      try {
+        const employeeId = String(row.employeeId || row.EmployeeId || row.employee || '').trim();
+        const fullName = String(row.fullName || row.FullName || row.name || row.Name || '').trim();
+        const email = String(row.email || row.Email || '').trim().toLowerCase();
+        const department = String(row.department || row.Department || '').trim();
+        const designation = String(row.designation || row.Designation || '').trim();
+
+        if (!employeeId || !fullName || !email || !department || !designation) {
+          results.failed.push({ row: idx + 2, reason: 'Missing required field(s)', data: row });
+          continue;
+        }
+
+        const dupEmail = await User.findOne({ email });
+        const dupEmp = await Faculty.findOne({ employeeId });
+        if (dupEmail) {
+          results.failed.push({ row: idx + 2, reason: 'Duplicate email', data: { email } });
+          continue;
+        }
+        if (dupEmp) {
+          results.failed.push({ row: idx + 2, reason: 'Duplicate employeeId', data: { employeeId } });
+          continue;
+        }
+
+        const parts = fullName.split(/\s+/);
+        const firstName = parts.shift();
+        const lastName = parts.join(' ') || '';
+
+        const base = (email.split('@')[0] || `${firstName}.${lastName}`.replace(/\s+/g, '.')).toLowerCase().replace(/[^a-z0-9\.]/g, '');
+        let username = base;
+        let i = 0;
+        while (await User.findOne({ username })) {
+          i += 1;
+          username = `${base}${i}`;
+        }
+
+        const defaultPassword = 'Welcome@123';
+        const passwordHash = await bcrypt.hash(defaultPassword, 12);
+
+        const user = await User.create({ email, passwordHash, role: 'faculty', username });
+
+        const faculty = await Faculty.create({ userId: user._id, employeeId, firstName, lastName, department, designation });
+
+        results.success.push({ row: idx + 2, userId: user._id, facultyId: faculty._id, email, employeeId });
+      } catch (errRow) {
+        results.failed.push({ row: idx + 2, reason: errRow.message || 'Failed to process row', data: row });
+      }
+    }
+
+    try { fs.unlinkSync(req.file.path); } catch (e) { }
+
+    res.json({ success: true, data: results });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -412,6 +563,126 @@ exports.calculatePercentage = async (req, res) => {
     }
     
     res.json({ success: true, message: `Processed ${updated.length} results`, data: { updated } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Export Students to Excel
+exports.exportStudents = async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.branch) filter.branch = req.query.branch;
+    if (req.query.semester) filter.currentSemester = Number(req.query.semester);
+    if (req.query.admissionYear) filter.admissionYear = Number(req.query.admissionYear);
+    if (req.query.gender) filter.gender = req.query.gender;
+
+    const students = await Student.find(filter)
+      .populate('userId', 'email')
+      .sort({ enrollmentNo: 1 })
+      .lean();
+
+    const studentsWithEmail = students.map(s => ({ ...s, email: s.userId?.email }));
+
+    const workbook = createStudentWorkbook(studentsWithEmail);
+    
+    // Generate filename with filters
+    const filterStr = [];
+    if (req.query.branch) filterStr.push(`Branch-${req.query.branch}`);
+    if (req.query.semester) filterStr.push(`Sem-${req.query.semester}`);
+    if (req.query.admissionYear) filterStr.push(`Year-${req.query.admissionYear}`);
+    const filename = filterStr.length > 0 
+      ? `Students_${filterStr.join('_')}_${Date.now()}.xlsx`
+      : `Students_${Date.now()}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Export Faculty to Excel
+exports.exportFaculty = async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.department) filter.department = req.query.department;
+    if (req.query.designation) filter.designation = req.query.designation;
+
+    const faculty = await Faculty.find(filter)
+      .populate('userId', 'email')
+      .sort({ employeeId: 1 })
+      .lean();
+
+    const facultyWithEmail = faculty.map(f => ({ ...f, email: f.userId?.email }));
+
+    const workbook = createFacultyWorkbook(facultyWithEmail);
+    
+    // Generate filename with filters
+    const filterStr = [];
+    if (req.query.department) filterStr.push(`Dept-${req.query.department}`);
+    if (req.query.designation) filterStr.push(`Desg-${req.query.designation}`);
+    const filename = filterStr.length > 0 
+      ? `Faculty_${filterStr.join('_')}_${Date.now()}.xlsx`
+      : `Faculty_${Date.now()}.xlsx`;
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// =============== TEMPORARY: Seed Test Data (For Development Only) ===============
+// This endpoint generates 10 test students and 10 test faculty for quick testing
+// REMOVE THIS IN PRODUCTION
+exports.seedTestData = async (req, res) => {
+  try {
+    const { seedTestData, testStudentData, testFacultyData } = require('../utils/seedTestData');
+    const results = await seedTestData();
+
+    // Map generated data to credentials format
+    const studentCredentials = results.studentsCreated > 0 
+      ? testStudentData.map((s, idx) => ({
+          name: `${s.firstName} ${s.lastName}`,
+          rollNo: `TS${String(idx + 1).padStart(4, '0')}`,
+          email: s.email,
+          username: `${s.firstName.toLowerCase()}.${s.lastName.toLowerCase()}`,
+          password: 'Welcome@123',
+        }))
+      : [];
+
+    const facultyCredentials = results.facultyCreated > 0
+      ? testFacultyData.map((f, idx) => ({
+          name: `${f.title ? f.title + ' ' : ''}${f.firstName} ${f.lastName}`,
+          employeeId: `EMPL${String(idx + 1).padStart(5, '0')}`,
+          email: f.email,
+          username: `${f.firstName.toLowerCase()}.${f.lastName.toLowerCase()}`,
+          password: 'Welcome@123',
+        }))
+      : [];
+
+    res.status(201).json({
+      success: true,
+      message: 'Test data seeded successfully',
+      data: {
+        studentsCreated: results.studentsCreated,
+        facultyCreated: results.facultyCreated,
+        studentsSkipped: results.studentsSkipped,
+        facultySkipped: results.facultySkipped,
+        errors: results.errors,
+        testAccounts: {
+          students: studentCredentials,
+          faculty: facultyCredentials,
+        },
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

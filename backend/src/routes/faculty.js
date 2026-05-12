@@ -6,7 +6,10 @@ const ctrl = require('../controllers/facultyController');
 router.use(authenticate, authorize('faculty'));
 
 router.get('/profile', ctrl.getProfile);
-router.patch('/profile', ctrl.updateProfile);
+router.patch('/profile', upload.fields([
+	{ name: 'profilePhoto', maxCount: 1 },
+	{ name: 'signature', maxCount: 1 },
+]), ctrl.updateProfile);
 router.get('/subjects', ctrl.getSubjects);
 router.post('/attendance', ctrl.markAttendance);
 router.get('/attendance', ctrl.getAttendance);

@@ -150,3 +150,41 @@ exports.resetPassword = async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// Public student registration
+exports.register = async (req, res) => {
+  try {
+    const { email, password, firstName, lastName, branch, currentSemester, section, session, dob, gender, phone, fatherName, motherName, address } = req.body;
+
+    if (!email || !password || !firstName || !lastName) {
+      return res.status(400).json({ success: false, message: 'Email, password, first name and last name are required' });
+    }
+
+    const existing = await User.findOne({ email });
+    if (existing) return res.status(400).json({ success: false, message: 'Email already in use' });
+
+    const passwordHash = await bcrypt.hash(password, 12);
+    const user = await User.create({ email, passwordHash, role: 'student' });
+
+    // Create student profile with minimal fields; admin may later fill enrollmentNo, admissionYear, etc.
+    const student = await Student.create({
+      userId: user._id,
+      firstName,
+      lastName,
+      branch: branch || 'IT',
+      currentSemester: currentSemester || 1,
+      section: section || 'A',
+      session: session || '',
+      dob,
+      gender,
+      phone,
+      fatherName,
+      motherName,
+      address,
+    });
+
+    res.status(201).json({ success: true, data: { userId: user._id, studentId: student._id } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};

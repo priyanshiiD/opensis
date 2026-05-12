@@ -14,9 +14,23 @@ const RevaluationRequest = require('../models/RevaluationRequest');
 
 exports.getProfile = async (req, res) => {
   try {
+    // Get student profile and populate user email for pre-fill
+    const User = require('../models/User');
     const student = await Student.findOne({ userId: req.user._id }).lean();
     if (!student) return res.status(404).json({ success: false, message: 'Profile not found' });
-    res.json({ success: true, data: { student } });
+
+    // Get user email to pre-fill if personalEmail not set
+    const user = await User.findById(req.user._id).lean();
+    const profileWithEmail = {
+      ...student,
+      userEmail: user?.email || '',
+      // Provide fallback values for fields that might be missing in older documents
+      section: student.section || 'N/A',
+      session: student.session || new Date().getFullYear() + '-' + (new Date().getFullYear() + 1),
+      admissionYear: student.admissionYear || new Date().getFullYear(),
+    };
+
+    res.json({ success: true, data: { student: profileWithEmail } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -24,12 +38,88 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const allowed = ['phone', 'address', 'profilePhotoUrl'];
+    // Editable by student: personal email, phone, address, gender, date of birth
+    const allowed = ['personalEmail', 'phone', 'address', 'gender', 'dob'];
     const update = {};
-    allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
-    const student = await Student.findOneAndUpdate({ userId: req.user._id }, update, { new: true });
+
+    // Pick allowed fields from body
+    allowed.forEach(k => {
+      if (req.body[k] !== undefined) {
+        // Handle date string conversion for dob
+        if (k === 'dob' && req.body[k]) {
+          update[k] = new Date(req.body[k]);
+        } else {
+          update[k] = req.body[k];
+        }
+      }
+    });
+
+    // Handle uploaded files (profilePhoto and signature)
+    if (req.files) {
+      if (req.files.profilePhoto && req.files.profilePhoto[0]) {
+        update.profilePhotoUrl = `/uploads/${req.files.profilePhoto[0].filename}`;
+      }
+      if (req.files.signature && req.files.signature[0]) {
+        update.signatureUrl = `/uploads/${req.files.signature[0].filename}`;
+      }
+    }
+
+    // Prevent modification of admin-controlled fields even if provided
+    const forbidden = ['enrollmentNo', 'admissionYear', 'fatherName', 'motherName', 'branch', 'currentSemester', 'section', 'session', 'firstName', 'lastName'];
+    forbidden.forEach(f => { if (req.body[f] !== undefined) delete req.body[f]; });
+
+    // Validate gender if provided
+    if (update.gender && !['male', 'female', 'other'].includes(String(update.gender).toLowerCase())) {
+      return res.status(400).json({ success: false, message: 'Invalid gender value. Must be Male, Female, or Other.' });
+    }
+
+    // Validate email format if provided
+    if (update.personalEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(update.personalEmail)) {
+        return res.status(400).json({ success: false, message: 'Please enter a valid email address' });
+      }
+
+      // Check if email already in use
+      const User = require('../models/User');
+      const existing = await User.findOne({ email: update.personalEmail, _id: { $ne: req.user._id } });
+      if (existing) return res.status(400).json({ success: false, message: 'Email already in use by another account' });
+    }
+
+    // Validate phone number if provided
+    if (update.phone) {
+      const phoneRegex = /^[0-9\s\-\+\(\)]+$/;
+      const digitsOnly = update.phone.replace(/\D/g, '');
+      if (!phoneRegex.test(update.phone) || digitsOnly.length < 10) {
+        return res.status(400).json({ success: false, message: 'Phone number must be valid (at least 10 digits)' });
+      }
+    }
+
+    // Validate DOB if provided
+    if (update.dob) {
+      const dobDate = new Date(update.dob);
+      const age = (new Date() - dobDate) / (365.25 * 24 * 60 * 60 * 1000);
+      if (age < 15 || age > 100) {
+        return res.status(400).json({ success: false, message: 'Date of birth must represent a reasonable age (15-100 years)' });
+      }
+    }
+
+    // Update Student document
+    const student = await Student.findOneAndUpdate({ userId: req.user._id }, update, { new: true, runValidators: true });
+
+    // If personalEmail provided, also sync with User document
+    if (update.personalEmail) {
+      const User = require('../models/User');
+      await User.findByIdAndUpdate(req.user._id, { email: update.personalEmail });
+    }
+
     res.json({ success: true, data: { student } });
   } catch (err) {
+    // Handle Mongoose validation errors
+    if (err.name === 'ValidationError') {
+      const messages = Object.values(err.errors).map(e => e.message);
+      return res.status(400).json({ success: false, message: messages.join('; ') });
+    }
     res.status(500).json({ success: false, message: err.message });
   }
 };
