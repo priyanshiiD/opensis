@@ -104,7 +104,20 @@ const autoSeed = async () => {
 
 connectDB().then(() => autoSeed()).catch(err => console.error('Auto-seed error:', err));
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
+// CORS: Accept all localhost ports for development, or use CLIENT_URL env var
+const corsOptions = {
+  origin: (origin, callback) => {
+    if (!origin || origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+      callback(null, true);
+    } else if (process.env.CLIENT_URL && origin === process.env.CLIENT_URL) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS not allowed'));
+    }
+  },
+  credentials: true
+};
+app.use(cors(corsOptions));
 app.use(express.json());
 app.use('/uploads', express.static(path.join(__dirname, 'src/uploads')));
 
@@ -118,5 +131,40 @@ app.use((err, req, res, next) => {
   res.status(500).json({ success: false, message: 'Internal server error' });
 });
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+const PORT = Number(process.env.PORT) || 5000;
+
+// Start server with simple retry on port conflict (tries PORT then PORT+1)
+const startServer = (port, triedAlt = false) => {
+  const server = app.listen(port, () => console.log(`Server running on port ${port}`));
+
+  server.on('error', (err) => {
+    if (err && err.code === 'EADDRINUSE') {
+      console.error(`Error: port ${port} is already in use.`);
+      if (!triedAlt) {
+        const alt = port + 1;
+        console.log(`Attempting to start server on alternative port ${alt}...`);
+        // give a short delay to avoid tight recursion
+        setTimeout(() => startServer(alt, true), 200);
+      } else {
+        console.error('Alternative port also in use. Exiting.');
+        process.exit(1);
+      }
+    } else {
+      console.error('Server error:', err);
+      process.exit(1);
+    }
+  });
+
+  return server;
+};
+
+// Global error handlers
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+  process.exit(1);
+});
+
+startServer(PORT);

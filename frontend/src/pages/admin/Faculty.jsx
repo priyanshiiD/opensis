@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { Plus, Search, Pencil, Trash2, X } from 'lucide-react';
+import { Plus, Search, Pencil, Trash2, X, Download } from 'lucide-react';
 
 function DeleteModal({ name, onConfirm, onCancel, loading }) {
   return (
@@ -33,6 +33,7 @@ export default function AdminFaculty() {
   const [department, setDepartment] = useState('');
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const load = () => {
     setLoading(true);
@@ -58,6 +59,33 @@ export default function AdminFaculty() {
       toast.error('Delete failed');
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (department) params.set('department', department);
+      
+      const response = await api.get(`/admin/faculty/export?${params}`, {
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `faculty_export_${Date.now()}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Excel file downloaded');
+    } catch (err) {
+      toast.error('Export failed');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -90,6 +118,14 @@ export default function AdminFaculty() {
             <option value="">All Departments</option>
             <option>IT</option><option>CSE</option><option>ECE</option><option>ME</option><option>CE</option>
           </select>
+          <button 
+            onClick={handleExportExcel} 
+            disabled={exporting || faculty.length === 0}
+            className="btn-secondary flex items-center gap-2 py-2 px-4 disabled:opacity-40"
+          >
+            <Download className="w-4 h-4" />
+            {exporting ? 'Exporting...' : 'Export Excel'}
+          </button>
         </div>
       </div>
 
