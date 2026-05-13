@@ -6,7 +6,8 @@ const ctrl = require('../controllers/studentController');
 router.use(authenticate, authorize('student'));
 
 router.get('/profile', ctrl.getProfile);
-router.patch('/profile', ctrl.updateProfile);
+// allow multipart form for profile photo and signature
+router.patch('/profile', upload.fields([{ name: 'profilePhoto', maxCount: 1 }, { name: 'signature', maxCount: 1 }]), ctrl.updateProfile);
 router.get('/attendance', ctrl.getAttendance);
 router.get('/assignments', ctrl.getAssignments);
 router.post('/assignments/:id/submit', upload.single('file'), ctrl.submitAssignment);

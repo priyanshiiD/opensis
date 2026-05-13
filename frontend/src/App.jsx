@@ -9,7 +9,7 @@ import Layout from "./components/Layout";
 import {
   LayoutDashboard, Users, UserCheck, BookOpen, Bell, Calendar,
   Clock, GraduationCap, User, ClipboardList, FileText, CreditCard,
-  Library, MessageSquare, BarChart3, CalendarDays
+  Library, MessageSquare, BarChart3, CalendarDays, Zap
 } from "lucide-react";
 
 // Common pages
@@ -33,6 +33,9 @@ import Notices from "./pages/admin/Notices";
 import AdminExamSchedule from "./pages/admin/ExamSchedule";
 import AdminClassSchedule from "./pages/admin/ClassSchedule";
 import AdminResults from "./pages/admin/Results";
+import BulkUploadStudents from "./pages/admin/BulkUploadStudents";
+import BulkUploadFaculty from "./pages/admin/BulkUploadFaculty";
+import SeedTestData from "./pages/admin/SeedTestData";
 
 // Student pages
 import StudentDashboard from "./pages/student/Dashboard";
@@ -59,12 +62,15 @@ import FacultyNotices from "./pages/faculty/Notices";
 const adminNav = [
   { path: "/admin/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { path: "/admin/students", label: "Students", icon: GraduationCap },
+  { path: "/admin/bulk-upload-students", label: "Bulk Upload Students", icon: GraduationCap },
   { path: "/admin/faculty", label: "Faculty", icon: UserCheck },
+  { path: "/admin/bulk-upload-faculty", label: "Bulk Upload Faculty", icon: UserCheck },
   { path: "/admin/subjects", label: "Subjects", icon: BookOpen },
   { path: "/admin/results", label: "Results", icon: BarChart3 },
   { path: "/admin/notices", label: "Notices", icon: Bell },
   { path: "/admin/exam-schedule", label: "Exam Schedule", icon: Calendar },
   { path: "/admin/class-schedule", label: "Class Schedule", icon: Clock },
+  { path: "/admin/seed-test-data", label: "🧪 Seed Test Data", icon: Zap },
 ];
 
 const studentNav = [
@@ -129,6 +135,9 @@ function App() {
           <Route path="/admin/exam-schedule" element={<ProtectedRoute roles={["admin"]}><AdminLayout><AdminExamSchedule /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/class-schedule" element={<ProtectedRoute roles={["admin"]}><AdminLayout><AdminClassSchedule /></AdminLayout></ProtectedRoute>} />
           <Route path="/admin/results" element={<ProtectedRoute roles={["admin"]}><AdminLayout><AdminResults /></AdminLayout></ProtectedRoute>} />
+          <Route path="/admin/bulk-upload-students" element={<ProtectedRoute roles={["admin"]}><AdminLayout><BulkUploadStudents /></AdminLayout></ProtectedRoute>} />
+          <Route path="/admin/bulk-upload-faculty" element={<ProtectedRoute roles={["admin"]}><AdminLayout><BulkUploadFaculty /></AdminLayout></ProtectedRoute>} />
+          <Route path="/admin/seed-test-data" element={<ProtectedRoute roles={["admin"]}><AdminLayout><SeedTestData /></AdminLayout></ProtectedRoute>} />
 
           {/* Student Routes */}
           <Route path="/student/dashboard" element={<ProtectedRoute roles={["student"]}><StudentLayout><StudentDashboard /></StudentLayout></ProtectedRoute>} />

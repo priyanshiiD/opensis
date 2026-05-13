@@ -7,11 +7,29 @@ const ClassSchedule = require('../models/ClassSchedule');
 const Result = require('../models/Result');
 const Student = require('../models/Student');
 
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const parseDateOnly = (value) => {
+  if (value === undefined || value === null || value === '') return undefined;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const isFutureDate = (date) => {
+  if (!date) return false;
+  const endOfToday = new Date();
+  endOfToday.setHours(23, 59, 59, 999);
+  return date > endOfToday;
+};
+
 exports.getProfile = async (req, res) => {
   try {
-    const faculty = await Faculty.findOne({ userId: req.user._id }).populate('subjectsTaught', 'code name branch semester').lean();
+    const faculty = await Faculty.findOne({ userId: req.user._id })
+      .populate('userId', 'email')
+      .populate('subjectsTaught', 'code name branch semester')
+      .lean();
     if (!faculty) return res.status(404).json({ success: false, message: 'Profile not found' });
-    res.json({ success: true, data: { faculty } });
+    res.json({ success: true, data: { faculty: { ...faculty, officialEmail: faculty.userId?.email } } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -19,13 +37,73 @@ exports.getProfile = async (req, res) => {
 
 exports.updateProfile = async (req, res) => {
   try {
-    const allowed = ['phone', 'address', 'profilePhotoUrl', 'designation', 'qualification'];
+    const faculty = await Faculty.findOne({ userId: req.user._id }).populate('userId', 'email');
+    if (!faculty) return res.status(404).json({ success: false, message: 'Profile not found' });
+
+    const allowed = ['email', 'phone', 'address', 'gender', 'qualification', 'experience', 'joiningDate'];
     const update = {};
-    allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
-    const faculty = await Faculty.findOneAndUpdate({ userId: req.user._id }, update, { new: true });
-    res.json({ success: true, data: { faculty } });
+
+    allowed.forEach((key) => {
+      if (req.body[key] !== undefined) update[key] = req.body[key];
+    });
+
+    const email = update.email?.trim().toLowerCase();
+    if (email !== undefined) {
+      if (!email || !EMAIL_REGEX.test(email)) {
+        return res.status(400).json({ success: false, message: 'Please enter a valid email address' });
+      }
+      const duplicate = await require('../models/User').findOne({ email, _id: { $ne: req.user._id } });
+      if (duplicate) {
+        return res.status(400).json({ success: false, message: 'Email already in use' });
+      }
+      update.email = email;
+    }
+
+    if (update.experience !== undefined) {
+      const experience = Number(update.experience);
+      if (!Number.isFinite(experience) || experience < 0) {
+        return res.status(400).json({ success: false, message: 'Experience must be a valid non-negative number' });
+      }
+      update.experience = experience;
+    }
+
+    if (update.joiningDate !== undefined) {
+      const joiningDate = parseDateOnly(update.joiningDate);
+      if (!joiningDate) {
+        return res.status(400).json({ success: false, message: 'Please select a valid joining date' });
+      }
+      if (isFutureDate(joiningDate)) {
+        return res.status(400).json({ success: false, message: 'Joining date cannot be in the future' });
+      }
+      update.joiningDate = joiningDate;
+    }
+
+    if (req.files?.profilePhoto?.[0]) {
+      update.profilePhotoUrl = `/uploads/${req.files.profilePhoto[0].filename}`;
+    }
+
+    if (req.files?.profilePhoto?.[0]) {
+      update.profilePhotoUrl = `/uploads/${req.files.profilePhoto[0].filename}`;
+    }
+
+    if (update.email) {
+      await require('../models/User').findByIdAndUpdate(req.user._id, { email: update.email }, { runValidators: true });
+    }
+
+    delete update.email;
+
+    await Faculty.findByIdAndUpdate(faculty._id, update, { runValidators: true });
+
+    const updated = await Faculty.findOne({ userId: req.user._id })
+      .populate('userId', 'email')
+      .populate('subjectsTaught', 'code name branch semester')
+      .lean();
+
+    res.json({ success: true, data: { faculty: { ...updated, officialEmail: updated.userId?.email } } });
   } catch (err) {
-    res.status(500).json({ success: false, message: err.message });
+    const message = err.name === 'ValidationError' ? Object.values(err.errors).map(e => e.message).join(', ') : err.message;
+    const statusCode = err.name === 'ValidationError' ? 400 : 500;
+    res.status(statusCode).json({ success: false, message });
   }
 };
 

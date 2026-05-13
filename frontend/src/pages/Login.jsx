@@ -7,16 +7,17 @@ import toast from 'react-hot-toast';
 export default function Login() {
   const { login, user } = useAuth();
   const navigate = useNavigate();
-  const [role, setRole] = useState('student');
+  const [role, setRole] = useState(() => localStorage.getItem('erp_last_role') || 'student');
   const [form, setForm] = useState({ email: '', password: '' });
   const [show, setShow] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState({ email: '', password: '', login: '' });
 
-  if (user) {
+  useEffect(() => {
+    if (!user) return;
     const redirects = { admin: '/admin/dashboard', student: '/student/dashboard', faculty: '/faculty/dashboard' };
     navigate(redirects[user.role] || '/', { replace: true });
-  }
+  }, [user, navigate]);
 
   // Email validation regex - college email format
   const isValidEmail = (email) => {
@@ -57,6 +58,7 @@ export default function Login() {
   // Reset form when switching roles
   const handleRoleChange = (newRole) => {
     setRole(newRole);
+    localStorage.setItem('erp_last_role', newRole);
     // Clear all input fields
     setForm({ email: '', password: '' });
     // Clear all validation and login errors
@@ -77,6 +79,7 @@ export default function Login() {
     try {
       // Send role along with email and password
       const u = await login(form.email, form.password, role);
+      localStorage.setItem('erp_last_role', role);
       toast.success(`Welcome back, ${u.profile?.firstName || u.email}!`);
       const redirects = { admin: '/admin/dashboard', student: '/student/dashboard', faculty: '/faculty/dashboard' };
       navigate(redirects[u.role] || '/', { replace: true });

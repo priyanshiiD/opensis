@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { Search, Plus, ChevronLeft, ChevronRight, Pencil, Trash2, X } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, Pencil, Trash2, X, Download } from 'lucide-react';
 
 function DeleteModal({ name, onConfirm, onCancel, loading }) {
   return (
@@ -34,9 +34,11 @@ export default function AdminStudents() {
   const [search, setSearch] = useState('');
   const [branch, setBranch] = useState('');
   const [semester, setSemester] = useState('');
+  const [admissionYear, setAdmissionYear] = useState('');
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -44,6 +46,7 @@ export default function AdminStudents() {
       const params = new URLSearchParams({ page, limit: 15 });
       if (branch) params.set('branch', branch);
       if (semester) params.set('semester', semester);
+      if (admissionYear) params.set('admissionYear', admissionYear);
       const { data } = await api.get(`/admin/students?${params}`);
       setStudents(data.data.students);
       setTotal(data.data.total);
@@ -53,7 +56,7 @@ export default function AdminStudents() {
     }
   };
 
-  useEffect(() => { load(); }, [page, branch, semester]);
+  useEffect(() => { load(); }, [page, branch, semester, admissionYear]);
 
   const filtered = search
     ? students.filter(s => `${s.firstName} ${s.lastName} ${s.enrollmentNo} ${s.email || ''}`.toLowerCase().includes(search.toLowerCase()))
@@ -73,6 +76,35 @@ export default function AdminStudents() {
     }
   };
 
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (branch) params.set('branch', branch);
+      if (semester) params.set('semester', semester);
+      if (admissionYear) params.set('admissionYear', admissionYear);
+      
+      const response = await api.get(`/admin/students/export?${params}`, {
+        responseType: 'blob'
+      });
+      
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `students_export_${Date.now()}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.parentNode.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success('Excel file downloaded');
+    } catch (err) {
+      toast.error('Export failed');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   return (
     <div>
       {deleteTarget && (
@@ -89,9 +121,7 @@ export default function AdminStudents() {
           <h1 className="text-2xl font-bold text-slate-800">Students</h1>
           <p className="text-slate-500 text-sm">{total} total enrolled</p>
         </div>
-        <Link to="/admin/enroll-student" className="btn-primary">
-          <Plus className="w-4 h-4" />Enroll Student
-        </Link>
+        {/* Enroll Student removed: students are not created by admin */}
       </div>
 
       <div className="card mb-4">
@@ -108,6 +138,18 @@ export default function AdminStudents() {
             <option value="">All Semesters</option>
             {[1,2,3,4,5,6,7,8].map(s => <option key={s}>{s}</option>)}
           </select>
+          <select className="input w-auto" value={admissionYear} onChange={e => { setAdmissionYear(e.target.value); setPage(1); }}>
+            <option value="">All Years</option>
+            {[2024, 2023, 2022, 2021, 2020].map(y => <option key={y}>{y}</option>)}
+          </select>
+          <button 
+            onClick={handleExportExcel} 
+            disabled={exporting || total === 0}
+            className="btn-secondary flex items-center gap-2 py-2 px-4 disabled:opacity-40"
+          >
+            <Download className="w-4 h-4" />
+            {exporting ? 'Exporting...' : 'Export Excel'}
+          </button>
         </div>
       </div>
 
