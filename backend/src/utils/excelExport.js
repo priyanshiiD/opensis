@@ -57,6 +57,37 @@ const createStudentWorkbook = (students) => {
   return workbook;
 };
 
+// Create a workbook template for student bulk upload
+const createStudentTemplateWorkbook = (students) => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Students');
+
+  worksheet.columns = [
+    { header: 'rollNo', key: 'rollNo', width: 18 },
+    { header: 'fullName', key: 'fullName', width: 24 },
+    { header: 'email', key: 'email', width: 24 },
+    { header: 'branch', key: 'branch', width: 22 },
+    { header: 'semester', key: 'semester', width: 12 },
+  ];
+
+  worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF366092' } };
+  worksheet.getRow(1).alignment = { horizontal: 'center', vertical: 'center' };
+
+  students.forEach((student) => {
+    worksheet.addRow({
+      rollNo: student.rollNo,
+      fullName: student.fullName,
+      email: student.email || '',
+      branch: student.branch,
+      semester: student.semester,
+    });
+  });
+
+  worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+  return workbook;
+};
+
 // Create a workbook with faculty data
 const createFacultyWorkbook = (faculty) => {
   const workbook = new ExcelJS.Workbook();
@@ -104,4 +135,40 @@ const createFacultyWorkbook = (faculty) => {
   return workbook;
 };
 
-module.exports = { createStudentWorkbook, createFacultyWorkbook };
+// Create a workbook template for faculty bulk upload
+const createFacultyTemplateWorkbook = (faculty) => {
+  const workbook = new ExcelJS.Workbook();
+  const worksheet = workbook.addWorksheet('Faculty');
+
+  worksheet.columns = [
+    { header: 'employeeId', key: 'employeeId', width: 18 },
+    { header: 'fullName', key: 'fullName', width: 24 },
+    { header: 'email', key: 'email', width: 24 },
+    { header: 'department', key: 'department', width: 22 },
+    { header: 'designation', key: 'designation', width: 18 },
+  ];
+
+  worksheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+  worksheet.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF2E5C3E' } };
+  worksheet.getRow(1).alignment = { horizontal: 'center', vertical: 'center' };
+
+  faculty.forEach((member) => {
+    worksheet.addRow({
+      employeeId: member.employeeId,
+      fullName: member.fullName,
+      email: member.email || '',
+      department: member.department || '',
+      designation: member.designation || '',
+    });
+  });
+
+  worksheet.views = [{ state: 'frozen', ySplit: 1 }];
+  return workbook;
+};
+
+module.exports = {
+  createStudentWorkbook,
+  createFacultyWorkbook,
+  createStudentTemplateWorkbook,
+  createFacultyTemplateWorkbook,
+};

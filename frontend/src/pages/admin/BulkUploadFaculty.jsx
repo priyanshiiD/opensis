@@ -119,11 +119,11 @@ export default function BulkUploadFaculty() {
               Download a sample Excel file to see the required format:
             </p>
             <a
-              href="https://example.com/sample_faculty.xlsx"
+              href="/docs/sample_faculty.xlsx"
               download
               className="inline-block px-4 py-2 text-sm font-medium text-primary-600 bg-primary-50 rounded hover:bg-primary-100 transition-colors"
             >
-              📥 Download Sample File
+              📥 Download Sample File (XLSX)
             </a>
           </div>
         </div>

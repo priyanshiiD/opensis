@@ -8,6 +8,7 @@ export default defineConfig({
     proxy: {
       '/api': { target: process.env.VITE_BACKEND_URL || 'http://localhost:5000', changeOrigin: true },
       '/uploads': { target: process.env.VITE_BACKEND_URL || 'http://localhost:5000', changeOrigin: true },
+      '/docs': { target: process.env.VITE_BACKEND_URL || 'http://localhost:5000', changeOrigin: true },
     },
   },
 });
