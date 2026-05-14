@@ -214,6 +214,13 @@ exports.bulkUploadStudents = async (req, res) => {
           continue;
         }
 
+        // Email format validation - must be @college.edu domain
+        const emailRegex = /^[^@]+@college\.edu$/i;
+        if (!emailRegex.test(email)) {
+          results.failed.push({ row: idx + 2, reason: 'Invalid email format. Use format like: student@college.edu', data: { email } });
+          continue;
+        }
+
         // duplicate checks
         const dupEmail = await User.findOne({ email });
         const dupRoll = await Student.findOne({ enrollmentNo: rollNo });
@@ -290,6 +297,13 @@ exports.bulkUploadFaculty = async (req, res) => {
 
         if (!employeeId || !fullName || !email || !department || !designation) {
           results.failed.push({ row: idx + 2, reason: 'Missing required field(s)', data: row });
+          continue;
+        }
+
+        // Email format validation - must be @college.edu domain
+        const emailRegex = /^[^@]+@college\.edu$/i;
+        if (!emailRegex.test(email)) {
+          results.failed.push({ row: idx + 2, reason: 'Invalid email format. Use format like: faculty@college.edu', data: { email } });
           continue;
         }
 
