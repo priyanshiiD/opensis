@@ -40,6 +40,7 @@ exports.getStudents = async (req, res) => {
     const filter = {};
     if (req.query.branch) filter.branch = req.query.branch;
     if (req.query.semester) filter.currentSemester = Number(req.query.semester);
+    if (req.query.admissionYear) filter.admissionYear = Number(req.query.admissionYear);
     if (req.query.gender) filter.gender = req.query.gender;
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 20;

@@ -4,6 +4,8 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { Search, ChevronLeft, ChevronRight, Pencil, Trash2, X, Download } from 'lucide-react';
 
+const ADMISSION_YEARS = Array.from({ length: 4 }, (_, index) => new Date().getFullYear() - index);
+
 function DeleteModal({ name, onConfirm, onCancel, loading }) {
   return (
     <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -139,8 +141,8 @@ export default function AdminStudents() {
             {[1,2,3,4,5,6,7,8].map(s => <option key={s}>{s}</option>)}
           </select>
           <select className="input w-auto" value={admissionYear} onChange={e => { setAdmissionYear(e.target.value); setPage(1); }}>
-            <option value="">All Years</option>
-            {[2024, 2023, 2022, 2021, 2020].map(y => <option key={y}>{y}</option>)}
+            <option value="">All Admission Years</option>
+            {ADMISSION_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
           </select>
           <button 
             onClick={handleExportExcel} 
