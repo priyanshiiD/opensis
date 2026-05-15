@@ -222,16 +222,14 @@ exports.getResult = async (req, res) => {
   try {
     const student = await Student.findOne({ userId: req.user._id });
     const requestedSemester = Number(req.query.semester);
-    const query = { studentId: student._id };
+    const query = { studentId: student._id, isPublished: true };
 
     if (Number.isInteger(requestedSemester) && requestedSemester > 0) {
       query.semester = requestedSemester;
-    } else {
-      query.semester = student.currentSemester;
     }
 
     const results = await Result.find(query)
-      .populate('subjectMarks.subjectId', 'code name')
+      .populate('subjectMarks.subjectId', 'code name credits')
       .sort({ semester: -1, createdAt: -1 })
       .lean();
     res.json({ success: true, data: { results } });
@@ -243,7 +241,31 @@ exports.getResult = async (req, res) => {
 exports.submitRevaluation = async (req, res) => {
   try {
     const student = await Student.findOne({ userId: req.user._id });
-    const reval = await RevaluationRequest.create({ studentId: student._id, ...req.body });
+    
+    // Look up the subject by its CODE (students enter code, not ObjectId)
+    const subject = await Subject.findOne({ code: req.body.subjectId.toUpperCase().trim() });
+    if (!subject) return res.status(404).json({ success: false, message: 'Subject code not found' });
+
+    // Check if the student actually has a result for this subject
+    const result = await Result.findOne({ 
+      studentId: student._id, 
+      semester: Number(req.body.semester),
+      session: req.body.session,
+      "subjectMarks.subjectId": subject._id 
+    });
+
+    if (!result) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `You are not enrolled in ${subject.code} for Sem ${req.body.semester}. No marks found.` 
+      });
+    }
+
+    const reval = await RevaluationRequest.create({ 
+      studentId: student._id, 
+      ...req.body,
+      subjectId: subject._id // use the actual ObjectId
+    });
     res.status(201).json({ success: true, data: { reval } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });

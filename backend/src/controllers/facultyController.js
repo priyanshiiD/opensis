@@ -193,25 +193,58 @@ exports.gradeSubmission = async (req, res) => {
   }
 };
 
+// Grade calculation helpers
+const calcGrade = (totalMarks) => {
+  if (totalMarks >= 90) return 'O';
+  if (totalMarks >= 75) return 'A+';
+  if (totalMarks >= 60) return 'A';
+  if (totalMarks >= 50) return 'B+';
+  if (totalMarks >= 40) return 'B';
+  return 'F';
+};
+
+const calcGradePoints = (totalMarks) => {
+  if (totalMarks >= 90) return 10;
+  if (totalMarks >= 75) return 9;
+  if (totalMarks >= 60) return 8;
+  if (totalMarks >= 50) return 7;
+  if (totalMarks >= 40) return 6;
+  return 0;
+};
+
 exports.updateMarks = async (req, res) => {
   try {
     const { semester, session, entries } = req.body;
     for (const entry of entries) {
       const { studentId, subjectId, internalMarks, externalMarks } = entry;
       const totalMarks = (internalMarks || 0) + (externalMarks || 0);
-      const grade = totalMarks >= 90 ? 'O' : totalMarks >= 75 ? 'A+' : totalMarks >= 60 ? 'A' : totalMarks >= 50 ? 'B+' : totalMarks >= 40 ? 'B' : 'F';
+      const grade = calcGrade(totalMarks);
+      const gradePoints = calcGradePoints(totalMarks);
+
+      // Get subject credits
+      const subject = await Subject.findById(subjectId).lean();
+      const credits = subject?.credits || 3;
+      const creditPoints = gradePoints * credits;
+
+      // Get student for branch info
+      const student = await Student.findById(studentId).lean();
+
+      // Enrollment check
+      if (student && subject && student.branch !== subject.branch) {
+        throw new Error(`Enrollment Mismatch: Student ${student.enrollmentNo} is from ${student.branch}, cannot assign marks for ${subject.branch} subject`);
+      }
+      if (student && subject && student.currentSemester < subject.semester) {
+        throw new Error(`Semester Mismatch: Student ${student.enrollmentNo} is in Sem ${student.currentSemester}, but this subject is for Sem ${subject.semester}`);
+      }
 
       let result = await Result.findOne({ studentId, semester, session });
-      if (!result) result = new Result({ studentId, semester, session, subjectMarks: [] });
+      if (!result) result = new Result({ studentId, semester, session, branch: student?.branch, subjectMarks: [] });
 
       const existing = result.subjectMarks.findIndex(s => s.subjectId?.toString() === subjectId);
-      const markEntry = { subjectId, internalMarks, externalMarks, totalMarks, grade };
+      const markEntry = { subjectId, internalMarks, externalMarks, totalMarks, grade, gradePoints, credits, creditPoints };
       if (existing >= 0) result.subjectMarks[existing] = markEntry;
       else result.subjectMarks.push(markEntry);
 
-      const allMarks = result.subjectMarks.map(s => s.totalMarks || 0);
-      result.sgpa = allMarks.length ? (allMarks.reduce((a, b) => a + b, 0) / allMarks.length / 10).toFixed(2) : 0;
-      result.status = result.subjectMarks.some(s => (s.totalMarks || 0) < 40) ? 'fail' : 'pass';
       await result.save();
     }
     res.json({ success: true, message: 'Marks updated' });
@@ -228,9 +261,186 @@ exports.getMarks = async (req, res) => {
     if (session) filter.session = session;
     const results = await Result.find(filter)
       .populate('studentId', 'firstName lastName enrollmentNo')
-      .populate('subjectMarks.subjectId', 'code name')
+      .populate('subjectMarks.subjectId', 'code name credits')
       .lean();
     res.json({ success: true, data: { results } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Bulk upload marks via Excel
+exports.bulkUploadMarks = async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
+
+    const { subjectId, semester, session } = req.body;
+    if (!subjectId || !semester || !session) {
+      return res.status(400).json({ success: false, message: 'subjectId, semester, and session are required' });
+    }
+
+    const xlsx = require('xlsx');
+    const fs = require('fs');
+
+    const subject = await Subject.findById(subjectId).lean();
+    if (!subject) return res.status(404).json({ success: false, message: 'Subject not found' });
+
+    const credits = subject.credits || 3;
+
+    const workbook = xlsx.readFile(req.file.path, { cellDates: true });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+
+    const results = { success: [], failed: [] };
+
+    for (const [idx, row] of rows.entries()) {
+      try {
+        const enrollmentNo = String(row.enrollmentNo || row.EnrollmentNo || row.enrollment_no || row.rollNo || row.RollNo || '').trim();
+        const internalMarks = Number(row.internalMarks || row.InternalMarks || row.internal || row.Internal || 0);
+        const externalMarks = Number(row.externalMarks || row.ExternalMarks || row.external || row.External || 0);
+
+        if (!enrollmentNo) {
+          results.failed.push({ row: idx + 2, reason: 'Missing enrollment number' });
+          continue;
+        }
+
+        if (internalMarks < 0 || internalMarks > 40) {
+          results.failed.push({ row: idx + 2, reason: `Internal marks must be 0-40 (got ${internalMarks})`, enrollmentNo });
+          continue;
+        }
+        if (externalMarks < 0 || externalMarks > 60) {
+          results.failed.push({ row: idx + 2, reason: `External marks must be 0-60 (got ${externalMarks})`, enrollmentNo });
+          continue;
+        }
+
+        const student = await Student.findOne({ enrollmentNo }).lean();
+        if (!student) {
+          results.failed.push({ row: idx + 2, reason: 'Student not found in system', enrollmentNo });
+          continue;
+        }
+
+        // Enrollment check: branch must match subject branch
+        if (student.branch !== subject.branch) {
+          results.failed.push({ 
+            row: idx + 2, 
+            reason: `Enrollment Mismatch: Student is from ${student.branch}, but this subject is for ${subject.branch}`, 
+            enrollmentNo 
+          });
+          continue;
+        }
+
+        // Semester check: Ensure student is in (or has passed) the semester of the subject
+        if (student.currentSemester < subject.semester) {
+          results.failed.push({
+            row: idx + 2,
+            reason: `Semester Mismatch: Student is in Sem ${student.currentSemester}, but this subject is for Sem ${subject.semester}`,
+            enrollmentNo
+          });
+          continue;
+        }
+
+        const totalMarks = internalMarks + externalMarks;
+        const grade = calcGrade(totalMarks);
+        const gradePoints = calcGradePoints(totalMarks);
+        const creditPoints = gradePoints * credits;
+
+        let result = await Result.findOne({ studentId: student._id, semester: Number(semester), session });
+        if (!result) {
+          result = new Result({
+            studentId: student._id,
+            semester: Number(semester),
+            session,
+            branch: student.branch,
+            subjectMarks: [],
+          });
+        }
+
+        const existingIdx = result.subjectMarks.findIndex(s => s.subjectId?.toString() === subjectId);
+        const markEntry = { subjectId, internalMarks, externalMarks, totalMarks, grade, gradePoints, credits, creditPoints };
+
+        if (existingIdx >= 0) result.subjectMarks[existingIdx] = markEntry;
+        else result.subjectMarks.push(markEntry);
+
+        await result.save();
+        results.success.push({ row: idx + 2, enrollmentNo, totalMarks, grade });
+      } catch (errRow) {
+        results.failed.push({ row: idx + 2, reason: errRow.message || 'Failed to process row' });
+      }
+    }
+
+    // cleanup uploaded file
+    try { require('fs').unlinkSync(req.file.path); } catch (e) { }
+
+    res.json({ success: true, data: results });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.downloadMarksTemplate = async (req, res) => {
+  try {
+    const { subjectId, semester, session } = req.query;
+    if (!subjectId || !semester || !session) return res.status(400).json({ success: false, message: 'subjectId, semester, and session required' });
+
+    const subject = await Subject.findById(subjectId).lean();
+    if (!subject) return res.status(404).json({ success: false, message: 'Subject not found' });
+
+    // Find students in this branch and semester
+    const students = await Student.find({ 
+      branch: subject.branch,
+      currentSemester: Number(semester) 
+    }).sort({ enrollmentNo: 1 }).lean();
+
+    if (students.length === 0) return res.status(404).json({ success: false, message: 'No students found for this branch and semester' });
+
+    // Find existing results to pre-fill marks if any
+    const results = await Result.find({ semester: Number(semester), session }).lean();
+
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet(`${subject.code} Marks`);
+
+    // Add columns
+    ws.columns = [
+      { header: 'enrollmentNo', key: 'enrollmentNo', width: 20 },
+      { header: 'internalMarks', key: 'internalMarks', width: 15 },
+      { header: 'externalMarks', key: 'externalMarks', width: 15 },
+      { header: 'studentName', key: 'studentName', width: 30 },
+    ];
+
+    // Style header
+    ws.getRow(1).font = { bold: true };
+    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE0E0E0' } };
+
+    // Add data
+    for (const student of students) {
+      // Look for existing marks for this student and subject
+      const result = results.find(r => r.studentId?.toString() === student._id.toString());
+      let internal = '';
+      let external = '';
+
+      if (result) {
+        const sm = (result.subjectMarks || []).find(s => s.subjectId?.toString() === subjectId);
+        if (sm) {
+          internal = sm.internalMarks ?? '';
+          external = sm.externalMarks ?? '';
+        }
+      }
+
+      ws.addRow({
+        enrollmentNo: student.enrollmentNo,
+        studentName: `${student.firstName} ${student.lastName}`,
+        internalMarks: internal,
+        externalMarks: external,
+      });
+    }
+
+    const filename = `MarksTemplate_${subject.code}_Sem${semester}_${session}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    await workbook.xlsx.write(res);
+    res.end();
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

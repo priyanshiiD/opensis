@@ -9,6 +9,7 @@ const ClassSchedule = require('../models/ClassSchedule');
 const Fee = require('../models/Fee');
 const Result = require('../models/Result');
 const Admin = require('../models/Admin');
+const RevaluationRequest = require('../models/RevaluationRequest');
 const { createStudentWorkbook, createFacultyWorkbook } = require('../utils/excelExport');
 const xlsx = require('xlsx');
 const path = require('path');
@@ -516,15 +517,36 @@ exports.getFees = async (req, res) => {
 };
 
 // Result Management
+
+// Grade calculation helpers
+const calcGrade = (totalMarks) => {
+  if (totalMarks >= 90) return 'O';
+  if (totalMarks >= 75) return 'A+';
+  if (totalMarks >= 60) return 'A';
+  if (totalMarks >= 50) return 'B+';
+  if (totalMarks >= 40) return 'B';
+  return 'F';
+};
+
+const calcGradePoints = (totalMarks) => {
+  if (totalMarks >= 90) return 10;
+  if (totalMarks >= 75) return 9;
+  if (totalMarks >= 60) return 8;
+  if (totalMarks >= 50) return 7;
+  if (totalMarks >= 40) return 6;
+  return 0;
+};
+
 exports.getResults = async (req, res) => {
   try {
     const filter = {};
     if (req.query.semester) filter.semester = Number(req.query.semester);
     if (req.query.session) filter.session = req.query.session;
+    if (req.query.branch) filter.branch = req.query.branch;
     const results = await Result.find(filter)
       .populate('studentId', 'firstName lastName enrollmentNo branch')
       .populate('subjectMarks.subjectId', 'code name credits')
-      .sort({ createdAt: -1 })
+      .sort({ rank: 1, createdAt: -1 })
       .lean();
     res.json({ success: true, data: { results } });
   } catch (err) {
@@ -532,56 +554,410 @@ exports.getResults = async (req, res) => {
   }
 };
 
-exports.calculatePercentage = async (req, res) => {
+// Check which subjects have marks submitted for a semester/session
+exports.getSubmissionStatus = async (req, res) => {
   try {
-    const { semester, session } = req.body;
-    if (!semester || !session) return res.status(400).json({ success: false, message: 'Semester and session required' });
-    
-    const results = await Result.find({ semester, session })
-      .populate('subjectMarks.subjectId', 'credits')
+    const { semester, session, branch } = req.query;
+    if (!semester || !session) return res.status(400).json({ success: false, message: 'semester and session required' });
+
+    // Get all subjects for this semester/branch
+    const subjectFilter = { semester: Number(semester) };
+    if (branch) subjectFilter.branch = branch;
+    const subjects = await Subject.find(subjectFilter)
+      .populate('facultyId', 'firstName lastName')
       .lean();
-    
-    const updated = [];
-    for (const result of results) {
-      const subjectMarks = result.subjectMarks || [];
-      
-      // Check if all subjects have marks
-      if (subjectMarks.length === 0 || subjectMarks.some(s => !s.totalMarks)) {
-        continue;
+
+    // Get all results for this semester/session
+    const resultFilter = { semester: Number(semester), session };
+    if (branch) resultFilter.branch = branch;
+    const results = await Result.find(resultFilter).lean();
+
+    // Count students who have marks for each subject
+    const totalStudents = await Student.countDocuments({
+      currentSemester: Number(semester),
+      ...(branch ? { branch } : {}),
+    });
+
+    const subjectStatus = subjects.map(sub => {
+      let studentsWithMarks = 0;
+      for (const r of results) {
+        if (r.subjectMarks.some(sm => sm.subjectId?.toString() === sub._id.toString() && sm.totalMarks != null)) {
+          studentsWithMarks++;
+        }
       }
-      
-      // Calculate total marks and total credits
-      let totalMarksWeighted = 0;
-      let totalCredits = 0;
-      let allPassing = true;
-      
-      for (const sm of subjectMarks) {
-        const credits = sm.subjectId?.credits || 3;
-        const marks = sm.totalMarks || 0;
-        totalMarksWeighted += marks * credits;
-        totalCredits += credits;
-        if (marks < 40) allPassing = false;
-      }
-      
-      // Calculate percentage and SGPA
-      const percentage = totalCredits > 0 ? ((totalMarksWeighted / totalCredits) / 100).toFixed(2) * 100 : 0;
-      const sgpa = totalCredits > 0 ? (totalMarksWeighted / totalCredits / 10).toFixed(2) : 0;
-      const status = allPassing ? 'pass' : 'fail';
-      
-      await Result.findByIdAndUpdate(result._id, {
-        sgpa,
-        percentage: Number(percentage),
-        status,
-      });
-      
-      updated.push({ studentId: result.studentId, sgpa, percentage, status });
-    }
-    
-    res.json({ success: true, message: `Processed ${updated.length} results`, data: { updated } });
+      return {
+        _id: sub._id,
+        code: sub.code,
+        name: sub.name,
+        credits: sub.credits,
+        faculty: sub.facultyId ? `${sub.facultyId.firstName} ${sub.facultyId.lastName}` : 'Unassigned',
+        studentsWithMarks,
+        totalStudents,
+        isComplete: studentsWithMarks >= totalStudents && totalStudents > 0,
+      };
+    });
+
+    const completedCount = subjectStatus.filter(s => s.isComplete).length;
+
+    res.json({
+      success: true,
+      data: {
+        subjects: subjectStatus,
+        totalSubjects: subjects.length,
+        completedSubjects: completedCount,
+        totalStudents,
+        allComplete: completedCount === subjects.length && subjects.length > 0,
+      },
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
 };
+
+// Generate full gradesheet — calculate SGPA, CGPA, percentage, rank, etc.
+exports.generateGradesheet = async (req, res) => {
+  try {
+    const { semester, session, branch } = req.body;
+    if (!semester || !session) return res.status(400).json({ success: false, message: 'Semester and session required' });
+
+    const filter = { semester: Number(semester), session };
+    if (branch) filter.branch = branch;
+
+    const results = await Result.find(filter)
+      .populate('subjectMarks.subjectId', 'credits code name')
+      .lean();
+
+    if (results.length === 0) return res.status(404).json({ success: false, message: 'No results found for this semester/session' });
+
+    const updated = [];
+
+    for (const result of results) {
+      const subjectMarks = result.subjectMarks || [];
+
+      if (subjectMarks.length === 0) continue;
+
+      let totalCreditPoints = 0;
+      let totalCredits = 0;
+      let earnedCredits = 0;
+      let allPassing = true;
+      let totalMarksSum = 0;
+      let totalMaxMarks = 0;
+
+      for (const sm of subjectMarks) {
+        const credits = sm.credits || sm.subjectId?.credits || 3;
+        const marks = sm.totalMarks || 0;
+        const gp = calcGradePoints(marks);
+        const cp = gp * credits;
+
+        totalCreditPoints += cp;
+        totalCredits += credits;
+        totalMarksSum += marks;
+        totalMaxMarks += 100; // each subject is out of 100
+
+        if (marks >= 40) {
+          earnedCredits += credits;
+        } else {
+          allPassing = false;
+        }
+      }
+
+      // SGPA = Σ(creditPoints) / Σ(credits)
+      const sgpa = totalCredits > 0 ? Number((totalCreditPoints / totalCredits).toFixed(2)) : 0;
+
+      // Percentage = (totalMarks / totalMaxMarks) * 100
+      const percentage = totalMaxMarks > 0 ? Number(((totalMarksSum / totalMaxMarks) * 100).toFixed(2)) : 0;
+
+      const status = allPassing ? 'pass' : 'fail';
+
+      // Calculate CGPA — get all previous semester results for this student
+      const allResults = await Result.find({
+        studentId: result.studentId,
+        semester: { $lte: Number(semester) },
+        isGenerated: true,
+      }).lean();
+
+      // Include current semester calculation
+      let cgpaTotalCP = totalCreditPoints;
+      let cgpaTotalCredits = totalCredits;
+
+      for (const prev of allResults) {
+        if (prev.semester === Number(semester) && prev.session === session) continue; // skip current
+        const prevCP = (prev.subjectMarks || []).reduce((sum, sm) => sum + (sm.creditPoints || 0), 0);
+        const prevC = (prev.subjectMarks || []).reduce((sum, sm) => sum + (sm.credits || 0), 0);
+        cgpaTotalCP += prevCP;
+        cgpaTotalCredits += prevC;
+      }
+
+      const cgpa = cgpaTotalCredits > 0 ? Number((cgpaTotalCP / cgpaTotalCredits).toFixed(2)) : sgpa;
+
+      // Update the result with grade points in subjectMarks
+      const updatedSubjectMarks = subjectMarks.map(sm => ({
+        ...sm,
+        gradePoints: calcGradePoints(sm.totalMarks || 0),
+        grade: calcGrade(sm.totalMarks || 0),
+        credits: sm.credits || sm.subjectId?.credits || 3,
+        creditPoints: calcGradePoints(sm.totalMarks || 0) * (sm.credits || sm.subjectId?.credits || 3),
+      }));
+
+      const remarks = allPassing ? 'Promoted' : 'Reappear';
+
+      await Result.findByIdAndUpdate(result._id, {
+        sgpa,
+        cgpa,
+        percentage,
+        status,
+        totalCredits,
+        earnedCredits,
+        remarks,
+        isGenerated: true,
+        subjectMarks: updatedSubjectMarks,
+      });
+
+      updated.push({
+        studentId: result.studentId,
+        sgpa,
+        cgpa,
+        percentage,
+        status,
+        totalCredits,
+        earnedCredits,
+        remarks,
+      });
+    }
+
+    // Calculate ranks — sort by SGPA desc, assign rank
+    const sortedByPerformance = [...updated].sort((a, b) => b.sgpa - a.sgpa);
+    for (let i = 0; i < sortedByPerformance.length; i++) {
+      const rank = i + 1;
+      await Result.findOneAndUpdate(
+        { studentId: sortedByPerformance[i].studentId, semester: Number(semester), session },
+        { rank }
+      );
+      sortedByPerformance[i].rank = rank;
+    }
+
+    res.json({
+      success: true,
+      message: `Gradesheet generated for ${updated.length} students`,
+      data: { updated: sortedByPerformance, totalProcessed: updated.length },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Publish/Unpublish results
+exports.publishResults = async (req, res) => {
+  try {
+    const { semester, session, branch, publish } = req.body;
+    if (!semester || !session) return res.status(400).json({ success: false, message: 'Semester and session required' });
+
+    const filter = { semester: Number(semester), session };
+    if (branch) filter.branch = branch;
+
+    const updateData = { isPublished: !!publish };
+    if (publish) updateData.publishedAt = new Date();
+
+    const result = await Result.updateMany(filter, updateData);
+
+    res.json({
+      success: true,
+      message: `${publish ? 'Published' : 'Unpublished'} ${result.modifiedCount} results`,
+      data: { modifiedCount: result.modifiedCount, isPublished: !!publish },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Result Analytics
+exports.getResultAnalytics = async (req, res) => {
+  try {
+    const { semester, session, branch } = req.query;
+    if (!semester || !session) return res.status(400).json({ success: false, message: 'semester and session required' });
+
+    const filter = { semester: Number(semester), session, isGenerated: true };
+    if (branch) filter.branch = branch;
+
+    const results = await Result.find(filter)
+      .populate('studentId', 'firstName lastName enrollmentNo branch')
+      .populate('subjectMarks.subjectId', 'code name')
+      .lean();
+
+    if (results.length === 0) return res.json({ success: true, data: { analytics: null } });
+
+    // Pass/Fail counts
+    const passCount = results.filter(r => r.status === 'pass').length;
+    const failCount = results.filter(r => r.status === 'fail').length;
+    const passPercentage = ((passCount / results.length) * 100).toFixed(1);
+
+    // Grade distribution
+    const gradeDistribution = { O: 0, 'A+': 0, A: 0, 'B+': 0, B: 0, F: 0 };
+    for (const r of results) {
+      for (const sm of (r.subjectMarks || [])) {
+        if (sm.grade && gradeDistribution[sm.grade] !== undefined) {
+          gradeDistribution[sm.grade]++;
+        }
+      }
+    }
+
+    // Top 10 students
+    const topStudents = [...results]
+      .filter(r => r.sgpa)
+      .sort((a, b) => b.sgpa - a.sgpa)
+      .slice(0, 10)
+      .map(r => ({
+        name: `${r.studentId?.firstName} ${r.studentId?.lastName}`,
+        enrollmentNo: r.studentId?.enrollmentNo,
+        sgpa: r.sgpa,
+        cgpa: r.cgpa,
+        percentage: r.percentage,
+        rank: r.rank,
+      }));
+
+    // Subject-wise average
+    const subjectMap = {};
+    for (const r of results) {
+      for (const sm of (r.subjectMarks || [])) {
+        const code = sm.subjectId?.code || 'Unknown';
+        const name = sm.subjectId?.name || 'Unknown';
+        if (!subjectMap[code]) subjectMap[code] = { code, name, marks: [], passCount: 0, failCount: 0 };
+        subjectMap[code].marks.push(sm.totalMarks || 0);
+        if ((sm.totalMarks || 0) >= 40) subjectMap[code].passCount++;
+        else subjectMap[code].failCount++;
+      }
+    }
+    const subjectWise = Object.values(subjectMap).map(s => ({
+      ...s,
+      average: (s.marks.reduce((a, b) => a + b, 0) / s.marks.length).toFixed(1),
+      highest: Math.max(...s.marks),
+      lowest: Math.min(...s.marks),
+      passPercentage: ((s.passCount / s.marks.length) * 100).toFixed(1),
+      totalStudents: s.marks.length,
+      marks: undefined,
+    }));
+
+    // Average SGPA
+    const avgSgpa = (results.reduce((sum, r) => sum + (r.sgpa || 0), 0) / results.length).toFixed(2);
+    const avgPercentage = (results.reduce((sum, r) => sum + (r.percentage || 0), 0) / results.length).toFixed(1);
+
+    res.json({
+      success: true,
+      data: {
+        analytics: {
+          totalStudents: results.length,
+          passCount,
+          failCount,
+          passPercentage,
+          avgSgpa,
+          avgPercentage,
+          gradeDistribution,
+          topStudents,
+          subjectWise,
+        },
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Export gradesheet as Excel
+exports.exportGradesheet = async (req, res) => {
+  try {
+    const { semester, session, branch } = req.query;
+    if (!semester || !session) return res.status(400).json({ success: false, message: 'semester and session required' });
+
+    const filter = { semester: Number(semester), session, isGenerated: true };
+    if (branch) filter.branch = branch;
+
+    const results = await Result.find(filter)
+      .populate('studentId', 'firstName lastName enrollmentNo branch')
+      .populate('subjectMarks.subjectId', 'code name credits')
+      .sort({ rank: 1 })
+      .lean();
+
+    if (results.length === 0) return res.status(404).json({ success: false, message: 'No gradesheet data found' });
+
+    // Collect all unique subjects
+    const subjectSet = new Map();
+    for (const r of results) {
+      for (const sm of (r.subjectMarks || [])) {
+        if (sm.subjectId) {
+          subjectSet.set(sm.subjectId._id.toString(), { code: sm.subjectId.code, name: sm.subjectId.name });
+        }
+      }
+    }
+    const allSubjects = Array.from(subjectSet.entries());
+
+    // Build spreadsheet data
+    const ExcelJS = require('exceljs');
+    const workbook = new ExcelJS.Workbook();
+    const ws = workbook.addWorksheet('Gradesheet');
+
+    // Header row
+    const headerRow = ['Rank', 'Enrollment No', 'Name', 'Branch'];
+    for (const [, sub] of allSubjects) {
+      headerRow.push(`${sub.code} (Marks)`, `${sub.code} (Grade)`, `${sub.code} (GP)`);
+    }
+    headerRow.push('Total Credits', 'Earned Credits', 'SGPA', 'CGPA', 'Percentage', 'Status', 'Remarks');
+
+    ws.addRow(headerRow);
+
+    // Style header
+    const header = ws.getRow(1);
+    header.font = { bold: true };
+    header.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };
+    header.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+
+    // Data rows
+    for (const r of results) {
+      const row = [
+        r.rank || '',
+        r.studentId?.enrollmentNo || '',
+        `${r.studentId?.firstName || ''} ${r.studentId?.lastName || ''}`,
+        r.studentId?.branch || r.branch || '',
+      ];
+
+      for (const [subId] of allSubjects) {
+        const sm = (r.subjectMarks || []).find(s => s.subjectId?._id?.toString() === subId);
+        row.push(sm?.totalMarks ?? '', sm?.grade ?? '', sm?.gradePoints ?? '');
+      }
+
+      row.push(r.totalCredits || '', r.earnedCredits || '', r.sgpa || '', r.cgpa || '',
+        r.percentage ? `${r.percentage}%` : '', (r.status || '').toUpperCase(), r.remarks || '');
+
+      const dataRow = ws.addRow(row);
+
+      // Color pass/fail
+      if (r.status === 'fail') {
+        dataRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFCE4E4' } };
+      }
+    }
+
+    // Auto-width columns
+    ws.columns.forEach(col => {
+      let maxLen = 10;
+      col.eachCell(cell => {
+        const len = String(cell.value || '').length;
+        if (len > maxLen) maxLen = len;
+      });
+      col.width = Math.min(maxLen + 2, 30);
+    });
+
+    const filename = `Gradesheet_Sem${semester}_${session}${branch ? '_' + branch : ''}_${Date.now()}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+// Keep backward compatibility
+exports.calculatePercentage = exports.generateGradesheet;
 
 // Export Students to Excel
 exports.exportStudents = async (req, res) => {
@@ -698,6 +1074,88 @@ exports.seedTestData = async (req, res) => {
         },
       },
     });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.getRevaluationRequests = async (req, res) => {
+  try {
+    const requests = await RevaluationRequest.find()
+      .populate('studentId', 'firstName lastName enrollmentNo branch')
+      .populate('subjectId', 'code name')
+      .sort({ requestedAt: -1 })
+      .lean();
+    res.json({ success: true, data: { requests } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.updateRevaluationRequest = async (req, res) => {
+  try {
+    const { status, internalMarks, externalMarks } = req.body;
+    const request = await RevaluationRequest.findById(req.params.id);
+    if (!request) return res.status(404).json({ success: false, message: 'Request not found' });
+
+    request.status = status;
+    await request.save();
+
+    // If approved and marks provided, update the actual result
+    if (status === 'approved' && (internalMarks !== undefined || externalMarks !== undefined)) {
+      const result = await Result.findOne({ 
+        studentId: request.studentId, 
+        semester: request.semester, 
+        session: request.session 
+      });
+
+      if (result) {
+        const smIndex = result.subjectMarks.findIndex(s => s.subjectId.toString() === request.subjectId.toString());
+        if (smIndex !== -1) {
+          const sm = result.subjectMarks[smIndex];
+          if (internalMarks !== undefined) sm.internalMarks = Number(internalMarks);
+          if (externalMarks !== undefined) sm.externalMarks = Number(externalMarks);
+          
+          sm.totalMarks = (sm.internalMarks || 0) + (sm.externalMarks || 0);
+          
+          // Re-calculate grade and GP for this subject
+          const calcGrade = (total) => {
+            if (total >= 90) return 'O';
+            if (total >= 75) return 'A+';
+            if (total >= 60) return 'A';
+            if (total >= 50) return 'B+';
+            if (total >= 40) return 'B';
+            return 'F';
+          };
+          const calcGP = (total) => {
+            if (total >= 90) return 10;
+            if (total >= 75) return 9;
+            if (total >= 60) return 8;
+            if (total >= 50) return 7;
+            if (total >= 40) return 6;
+            return 0;
+          };
+
+          sm.grade = calcGrade(sm.totalMarks);
+          sm.gradePoints = calcGP(sm.totalMarks);
+          sm.creditPoints = sm.gradePoints * (sm.credits || 3);
+
+          result.markModified('subjectMarks');
+          
+          // Re-calculate SGPA for the whole result
+          const totalCP = result.subjectMarks.reduce((sum, s) => sum + (s.creditPoints || 0), 0);
+          const totalCredits = result.subjectMarks.reduce((sum, s) => sum + (s.credits || 0), 0);
+          result.sgpa = totalCredits > 0 ? Number((totalCP / totalCredits).toFixed(2)) : 0;
+          result.totalMarks = result.subjectMarks.reduce((sum, s) => sum + (s.totalMarks || 0), 0);
+          result.percentage = Number(((result.totalMarks / (result.subjectMarks.length * 100)) * 100).toFixed(2));
+          result.status = result.subjectMarks.every(s => (s.totalMarks || 0) >= 40) ? 'pass' : 'fail';
+          
+          await result.save();
+        }
+      }
+    }
+
+    res.json({ success: true, message: `Request ${status} successfully` });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
