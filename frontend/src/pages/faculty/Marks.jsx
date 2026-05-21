@@ -24,7 +24,6 @@ export default function FacultyMarks() {
   useEffect(() => {
     Promise.all([
       api.get('/faculty/subjects').then(r => setSubjects(r.data.data.subjects)),
-      api.get('/admin/students?limit=1000').then(r => setStudents(r.data.data.students || [])),
     ]);
   }, []);
 
@@ -34,12 +33,84 @@ export default function FacultyMarks() {
     });
   };
 
+  // Load students for selected subject/semester/session
+  // Load students for the currently active subject (depends on tab)
+  useEffect(() => {
+    const load = async () => {
+      const activeSubjectId = tab === 'excel' ? excelSubject : selectedSubject;
+      if (!activeSubjectId) return setStudents([]);
+      const subj = subjects.find(s => s._id === activeSubjectId);
+      if (!subj) return setStudents([]);
+      const sem = semester || subj.semester;
+      setLoadingStudents(true);
+      try {
+        let q = `?branch=${encodeURIComponent(subj.branch)}&semester=${encodeURIComponent(sem)}&session=${encodeURIComponent(session)}&limit=1000`;
+        let { data } = await api.get(`/admin/students${q}`);
+        let roster = data.data.students || [];
+        // fallback: if session filter returns very few students, retry without session
+        if (roster.length <= 2) {
+          try {
+            q = `?branch=${encodeURIComponent(subj.branch)}&semester=${encodeURIComponent(sem)}&limit=1000`;
+            const resp2 = await api.get(`/admin/students${q}`);
+            const roster2 = resp2.data.data.students || [];
+            if (roster2.length > roster.length) {
+              roster = roster2;
+              toast.success(`Loaded ${roster.length} students (session not applied)`);
+            }
+          } catch (e) {
+            // ignore fallback error
+          }
+        }
+        setStudents(roster);
+      } catch (err) {
+        setStudents([]);
+      }
+      setLoadingStudents(false);
+    };
+    load();
+  }, [selectedSubject, excelSubject, semester, session, subjects, tab]);
+
   useEffect(() => {
     if (tab === 'view') loadExisting();
   }, [tab, semester, session]);
 
   const addEntry = () => {
     setEntries([...entries, { studentId: '', internalMarks: '', externalMarks: '' }]);
+  };
+
+  const populateRoster = async () => {
+    const activeSubject = tab === 'excel' ? excelSubject : selectedSubject;
+    if (!activeSubject) return toast.error('Select a subject first');
+    const subj = subjects.find(s => s._id === activeSubject);
+    if (!subj) return toast.error('Subject not found');
+    const sem = semester || subj.semester;
+    setLoadingStudents(true);
+    try {
+      let q = `?branch=${encodeURIComponent(subj.branch)}&semester=${encodeURIComponent(sem)}&session=${encodeURIComponent(session)}&limit=1000`;
+      let { data } = await api.get(`/admin/students${q}`);
+      let roster = data.data.students || [];
+      if (roster.length <= 2) {
+        try {
+          q = `?branch=${encodeURIComponent(subj.branch)}&semester=${encodeURIComponent(sem)}&limit=1000`;
+          const resp2 = await api.get(`/admin/students${q}`);
+          const roster2 = resp2.data.data.students || [];
+          if (roster2.length > roster.length) {
+            roster = roster2;
+            toast.success(`Loaded ${roster.length} students (session not applied)`);
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+      if (roster.length === 0) return toast.error('No students found for this subject/semester/session');
+      const rows = roster.map(s => ({ studentId: s._id, internalMarks: '', externalMarks: '' }));
+      setEntries(rows);
+      setStudents(roster);
+      toast.success(`${rows.length} students added to entries`);
+    } catch (err) {
+      toast.error('Failed to load students');
+    }
+    setLoadingStudents(false);
   };
 
   const updateEntry = (idx, field, value) => {
@@ -70,6 +141,25 @@ export default function FacultyMarks() {
       toast.success('Marks updated successfully');
       setEntries([]);
       if (tab === 'view') loadExisting();
+      // after manual submit, attempt to download the submitted marks workbook
+      try {
+        const q = `?subjectId=${selectedSubject}&semester=${semester}&session=${encodeURIComponent(session)}`;
+        const resp = await api.get(`/faculty/marks/export${q}`, { responseType: 'blob' });
+        const disposition = resp.headers['content-disposition'] || '';
+        let filename = 'submitted_marks.xlsx';
+        const match = /filename\*?=([^;]+)/i.exec(disposition);
+        if (match) filename = match[1].replace(/UTF-8''/, '').replace(/"/g, '').trim();
+        const url = window.URL.createObjectURL(new Blob([resp.data]));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (e) {
+        // ignore download errors
+      }
     } catch {
       toast.error('Failed to update marks');
     }
@@ -90,12 +180,52 @@ export default function FacultyMarks() {
     }
   };
 
-  const handleDownloadTemplate = () => {
+  const handleDownloadTemplate = async () => {
     if (!excelSubject || !semester || !session) {
       return toast.error('Select Subject, Semester, and Session to download template');
     }
-    const q = `?subjectId=${excelSubject}&semester=${semester}&session=${session}`;
-    window.location.href = `${api.defaults.baseURL}/faculty/marks/template${q}`;
+    const q = `?subjectId=${excelSubject}&semester=${semester}&session=${encodeURIComponent(session)}`;
+    try {
+      const resp = await api.get(`/faculty/marks/template${q}`, { responseType: 'blob' });
+      const disposition = resp.headers['content-disposition'] || '';
+      let filename = 'marks_template.xlsx';
+      const match = /filename\*?=([^;]+)/i.exec(disposition);
+      if (match) filename = match[1].replace(/UTF-8''/, '').replace(/"/g, '').trim();
+
+      const url = window.URL.createObjectURL(new Blob([resp.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to download template');
+    }
+  };
+
+  const handleDownloadSubmitted = async () => {
+    if (!selectedSubject || !semester || !session) return toast.error('Select subject, semester and session to download');
+    const q = `?subjectId=${selectedSubject}&semester=${semester}&session=${encodeURIComponent(session)}`;
+    try {
+      const resp = await api.get(`/faculty/marks/export${q}`, { responseType: 'blob' });
+      const disposition = resp.headers['content-disposition'] || '';
+      let filename = 'submitted_marks.xlsx';
+      const match = /filename\*?=([^;]+)/i.exec(disposition);
+      if (match) filename = match[1].replace(/UTF-8''/, '').replace(/"/g, '').trim();
+
+      const url = window.URL.createObjectURL(new Blob([resp.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to download submitted marks');
+    }
   };
 
   const handleExcelUpload = async (e) => {
@@ -117,6 +247,25 @@ export default function FacultyMarks() {
       setUploadResult(data.data);
       toast.success(`Processed ${data.data.success.length} entries`);
       setExcelFile(null);
+      // try to download the submitted marks workbook for convenience
+      try {
+        const q = `?subjectId=${excelSubject}&semester=${semester}&session=${encodeURIComponent(session)}`;
+        const resp = await api.get(`/faculty/marks/export${q}`, { responseType: 'blob' });
+        const disposition = resp.headers['content-disposition'] || '';
+        let filename = 'submitted_marks.xlsx';
+        const match = /filename\*?=([^;]+)/i.exec(disposition);
+        if (match) filename = match[1].replace(/UTF-8''/, '').replace(/"/g, '').trim();
+        const url = window.URL.createObjectURL(new Blob([resp.data]));
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        window.URL.revokeObjectURL(url);
+      } catch (e) {
+        // ignore download errors
+      }
     } catch (err) {
       toast.error(err.response?.data?.message || 'Upload failed');
     }
@@ -127,6 +276,8 @@ export default function FacultyMarks() {
     const s = students.find(st => st._id === id);
     return s ? `${s.firstName} ${s.lastName} (${s.enrollmentNo})` : 'Unknown';
   };
+
+  const activeSubjectId = tab === 'excel' ? excelSubject : selectedSubject;
 
   return (
     <div>
@@ -170,9 +321,14 @@ export default function FacultyMarks() {
           <div className="card">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-slate-800">Mark Entries</h3>
-              <button onClick={addEntry} className="btn-secondary text-xs flex items-center gap-1">
-                <Plus className="w-4 h-4" /> Add Student
-              </button>
+              <div className="flex gap-2">
+                <button onClick={addEntry} className="btn-secondary text-xs flex items-center gap-1">
+                  <Plus className="w-4 h-4" /> Add Student
+                </button>
+                <button onClick={populateRoster} disabled={!activeSubjectId || loadingStudents} className="btn-secondary text-xs flex items-center gap-1" title="Populate all students from this class">
+                  <Download className="w-4 h-4" /> Populate Roster
+                </button>
+              </div>
             </div>
 
             {entries.length === 0 ? (
@@ -235,6 +391,7 @@ export default function FacultyMarks() {
                   <button onClick={handleSubmit} disabled={submitting} className="btn-primary">
                     <Save className="w-4 h-4" /> {submitting ? 'Saving...' : 'Submit Marks'}
                   </button>
+                  <button onClick={() => handleDownloadSubmitted()} disabled={!selectedSubject || !semester || !session} className="btn-secondary">Download Submitted Marks</button>
                 </div>
               </>
             )}
@@ -281,6 +438,48 @@ export default function FacultyMarks() {
                   <input className="input" value={session} onChange={e => setSession(e.target.value)} placeholder="2024-25" required />
                 </div>
               </div>
+
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                {activeSubjectId ? (
+                  <div className="flex flex-wrap items-center gap-3">
+                    <span className="font-medium text-slate-700">Class roster ready:</span>
+                    <span>{loadingStudents ? 'Loading students...' : `${students.length} students found`}</span>
+                    {students.length > 0 && (
+                      <span className="text-xs text-slate-500">Use this roster to prepare the Excel sheet before uploading marks.</span>
+                    )}
+                  </div>
+                ) : (
+                  <span>Select subject, semester, and session to load the class roster.</span>
+                )}
+              </div>
+
+              {students.length > 0 && (
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 text-sm font-medium text-slate-700">
+                    Students in this class ({students.length})
+                  </div>
+                  <div className="max-h-72 overflow-y-auto">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-white">
+                        <tr className="border-b border-slate-200 text-slate-500">
+                          <th className="px-4 py-2 text-left">#</th>
+                          <th className="px-4 py-2 text-left">Student</th>
+                          <th className="px-4 py-2 text-left">Roll No.</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {students.map((s, i) => (
+                          <tr key={s._id} className="border-b border-slate-100 last:border-0">
+                            <td className="px-4 py-2 text-slate-500">{i + 1}</td>
+                            <td className="px-4 py-2 text-slate-800">{s.firstName} {s.lastName}</td>
+                            <td className="px-4 py-2 font-mono text-xs text-slate-500">{s.enrollmentNo}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               {/* File Upload Area */}
               <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 hover:border-primary-300 transition-colors">
