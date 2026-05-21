@@ -1,62 +1,68 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../api/axios';
-import { ClipboardList, Users, Check, X, Save, ChevronDown } from 'lucide-react';
+import { CalendarDays, Check, Download, FileSpreadsheet, Save, Send, Upload, Users, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function FacultyAttendance() {
   const [subjects, setSubjects] = useState([]);
   const [selectedSubject, setSelectedSubject] = useState('');
   const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [month, setMonth] = useState(new Date().toISOString().slice(0, 7));
   const [students, setStudents] = useState([]);
   const [records, setRecords] = useState([]);
-  const [pastRecords, setPastRecords] = useState([]);
-  const [tab, setTab] = useState('mark'); // 'mark' | 'history'
+  const [tab, setTab] = useState('mark');
   const [submitting, setSubmitting] = useState(false);
+  const [attendanceFile, setAttendanceFile] = useState(null);
+  const [loadingSheet, setLoadingSheet] = useState(false);
+  const [monthlySummary, setMonthlySummary] = useState(null);
+  const [loadingMonthly, setLoadingMonthly] = useState(false);
+  const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
     api.get('/faculty/subjects').then(r => setSubjects(r.data.data.subjects));
   }, []);
 
-  useEffect(() => {
-    if (selectedSubject && tab === 'history') {
-      api.get(`/faculty/attendance?subjectId=${selectedSubject}`).then(r => setPastRecords(r.data.data.records));
-    }
-  }, [selectedSubject, tab]);
+  const selectedSubjectObj = subjects.find(s => s._id === selectedSubject);
 
   const loadStudents = async () => {
-    if (!selectedSubject) return toast.error('Select a subject first');
-    const sub = subjects.find(s => s._id === selectedSubject);
-    if (!sub) return;
+    if (!selectedSubjectObj) return toast.error('Select a subject first');
     try {
-      // Get students of this subject's branch/semester via admin endpoint won't work, 
-      // so we use a workaround — the attendance API will accept any student list
-      const { data } = await api.get(`/faculty/attendance?subjectId=${selectedSubject}`);
-      // Extract unique students from past attendance, or use empty list for first time
-      const pastStudents = new Set();
-      (data.data.records || []).forEach(r => {
-        (r.records || []).forEach(rec => {
-          if (rec.studentId) pastStudents.add(JSON.stringify({ _id: rec.studentId._id || rec.studentId, name: rec.studentId.firstName ? `${rec.studentId.firstName} ${rec.studentId.lastName}` : rec.studentId }));
-        });
-      });
-
-      // For now, we'll show a simplified approach — faculty enters student records
-      // In production, this would fetch from admin/students endpoint with filters
-      const uniqueStudents = Array.from(pastStudents).map(s => JSON.parse(s));
-      if (uniqueStudents.length > 0) {
-        setStudents(uniqueStudents);
-        setRecords(uniqueStudents.map(s => ({ studentId: s._id, status: 'present' })));
-      } else {
-        toast('No students found in past attendance. Mark attendance with student IDs.', { icon: 'ℹ️' });
-        setStudents([]);
-        setRecords([]);
-      }
+      const q = `?branch=${encodeURIComponent(selectedSubjectObj.branch)}&semester=${encodeURIComponent(selectedSubjectObj.semester)}&limit=1000`;
+      const { data } = await api.get(`/admin/students${q}`);
+      const roster = data.data.students || [];
+      setStudents(roster);
+      setRecords(roster.map(s => ({ studentId: s._id, status: 'present' })));
+      if (roster.length === 0) toast('No students found for this class', { icon: 'ℹ️' });
     } catch {
       toast.error('Failed to load data');
     }
   };
 
+  useEffect(() => {
+    if (selectedSubject && tab === 'mark') loadStudents();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedSubject, tab]);
+
+  const loadMonthlySummary = async () => {
+    if (!selectedSubject) return;
+    setLoadingMonthly(true);
+    try {
+      const { data } = await api.get(`/faculty/attendance/monthly-summary?subjectId=${selectedSubject}&month=${month}`);
+      setMonthlySummary(data.data);
+    } catch (err) {
+      setMonthlySummary(null);
+      toast.error(err.response?.data?.message || 'Failed to load monthly attendance');
+    }
+    setLoadingMonthly(false);
+  };
+
+  useEffect(() => {
+    if (tab === 'history' && selectedSubject) loadMonthlySummary();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, selectedSubject, month]);
+
   const toggleStatus = (idx) => {
-    setRecords(prev => prev.map((r, i) => i === idx ? { ...r, status: r.status === 'present' ? 'absent' : 'present' } : r));
+    setRecords(prev => prev.map((r, i) => (i === idx ? { ...r, status: r.status === 'present' ? 'absent' : 'present' } : r)));
   };
 
   const markAll = (status) => {
@@ -66,37 +72,116 @@ export default function FacultyAttendance() {
   const handleSubmit = async () => {
     if (!selectedSubject || !date || records.length === 0) return toast.error('Fill all fields');
     setSubmitting(true);
-    const sub = subjects.find(s => s._id === selectedSubject);
     try {
       await api.post('/faculty/attendance', {
         subjectId: selectedSubject,
         date,
-        semester: sub?.semester,
-        branch: sub?.branch,
-        section: 'A',
         records,
       });
       toast.success('Attendance marked successfully');
-    } catch {
-      toast.error('Failed to mark attendance');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to mark attendance');
     }
     setSubmitting(false);
+  };
+
+  const downloadAttendanceSheet = async () => {
+    if (!selectedSubject || !date) return toast.error('Select subject and date');
+    setLoadingSheet(true);
+    try {
+      const q = `?subjectId=${selectedSubject}&date=${encodeURIComponent(date)}`;
+      const resp = await api.get(`/faculty/attendance/template${q}`, { responseType: 'blob' });
+      const disposition = resp.headers['content-disposition'] || '';
+      const match = /filename\*?=([^;]+)/i.exec(disposition);
+      const filename = match ? match[1].replace(/UTF-8''/, '').replace(/"/g, '').trim() : 'attendance.xlsx';
+      const url = window.URL.createObjectURL(new Blob([resp.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to download attendance sheet');
+    }
+    setLoadingSheet(false);
+  };
+
+  const uploadAttendanceSheet = async () => {
+    if (!selectedSubject || !date) return toast.error('Select subject and date');
+    if (!attendanceFile) return toast.error('Please choose an Excel file');
+
+    const formData = new FormData();
+    formData.append('file', attendanceFile);
+    formData.append('subjectId', selectedSubject);
+    formData.append('date', date);
+
+    setLoadingSheet(true);
+    try {
+      const { data } = await api.post('/faculty/attendance/bulk-upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      toast.success(`Attendance saved for ${data.data.attendance.records.length} students`);
+      setAttendanceFile(null);
+      await loadStudents();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to upload attendance sheet');
+    }
+    setLoadingSheet(false);
+  };
+
+  const downloadMonthlyExport = async () => {
+    if (!selectedSubject || !month) return toast.error('Select subject and month');
+    setLoadingMonthly(true);
+    try {
+      const q = `?subjectId=${selectedSubject}&month=${month}`;
+      const resp = await api.get(`/faculty/attendance/monthly-export${q}`, { responseType: 'blob' });
+      const disposition = resp.headers['content-disposition'] || '';
+      const match = /filename\*?=([^;]+)/i.exec(disposition);
+      const filename = match ? match[1].replace(/UTF-8''/, '').replace(/"/g, '').trim() : `attendance_${month}.xlsx`;
+      const url = window.URL.createObjectURL(new Blob([resp.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to export monthly attendance');
+    }
+    setLoadingMonthly(false);
+  };
+
+  const publishMonthlyNotice = async () => {
+    if (!selectedSubject || !month) return toast.error('Select subject and month');
+    setPublishing(true);
+    try {
+      const { data } = await api.post('/faculty/attendance/monthly-notice', {
+        subjectId: selectedSubject,
+        month,
+      });
+      toast.success('Monthly attendance notice sent to students');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send attendance notice');
+    } finally {
+      setPublishing(false);
+    }
   };
 
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-800">Attendance</h1>
-        <p className="text-slate-500 text-sm mt-1">Mark and view attendance records</p>
+        <p className="text-slate-500 text-sm mt-1">Mark daily attendance and review monthly records</p>
       </div>
 
-      {/* Tabs */}
       <div className="flex gap-1 mb-6 bg-slate-100 rounded-lg p-1 w-fit">
         <button onClick={() => setTab('mark')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === 'mark' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-600'}`}>Mark Attendance</button>
         <button onClick={() => setTab('history')} className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === 'history' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-600'}`}>History</button>
       </div>
 
-      {/* Subject & Date Selector */}
       <div className="card mb-6">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <div>
@@ -119,10 +204,48 @@ export default function FacultyAttendance() {
               </div>
             </>
           )}
+          {tab === 'history' && (
+            <>
+              <div>
+                <label className="label">Month</label>
+                <input type="month" className="input" value={month} onChange={e => setMonth(e.target.value)} />
+              </div>
+              <div className="flex items-end">
+                <button onClick={loadMonthlySummary} className="btn-primary w-full">
+                  <CalendarDays className="w-4 h-4" /> Load Month
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
-      {/* Mark Tab */}
+      {tab === 'mark' && selectedSubject && (
+        <div className="card mb-6 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h3 className="font-semibold text-slate-800">Excel Attendance Sheet</h3>
+              <p className="text-sm text-slate-500">Download the class roster for the selected date, mark present/absent, and upload it back.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={downloadAttendanceSheet} disabled={loadingSheet || !date} className="btn-secondary text-sm flex items-center gap-2 disabled:opacity-50">
+                <Download className="w-4 h-4" /> {loadingSheet ? 'Downloading...' : 'Download Sheet'}
+              </button>
+              <label className="btn-secondary text-sm flex items-center gap-2 cursor-pointer">
+                <FileSpreadsheet className="w-4 h-4" /> {attendanceFile ? attendanceFile.name : 'Choose Excel'}
+                <input type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={e => setAttendanceFile(e.target.files?.[0] || null)} />
+              </label>
+              <button onClick={uploadAttendanceSheet} disabled={loadingSheet || !attendanceFile} className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
+                <Upload className="w-4 h-4" /> Upload Sheet
+              </button>
+            </div>
+          </div>
+          <div className="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
+            The sheet includes all students in this class and a <span className="font-medium">status</span> column. Keep it as <span className="font-medium">present</span> or change to <span className="font-medium">absent</span> before uploading.
+          </div>
+        </div>
+      )}
+
       {tab === 'mark' && students.length > 0 && (
         <div className="card">
           <div className="flex items-center justify-between mb-4">
@@ -145,7 +268,10 @@ export default function FacultyAttendance() {
                 {students.map((s, i) => (
                   <tr key={s._id} className="border-b border-slate-50">
                     <td className="py-3 text-slate-500">{i + 1}</td>
-                    <td className="py-3 text-slate-800 font-medium">{s.name || s._id}</td>
+                    <td className="py-3 text-slate-800 font-medium">
+                      <div>{s.firstName} {s.lastName}</div>
+                      <div className="text-xs text-slate-400 font-mono">{s.enrollmentNo}</div>
+                    </td>
                     <td className="py-3 text-center">
                       <button
                         onClick={() => toggleStatus(i)}
@@ -161,9 +287,7 @@ export default function FacultyAttendance() {
             </table>
           </div>
           <div className="mt-4 flex justify-between items-center">
-            <p className="text-sm text-slate-500">
-              Present: {records.filter(r => r.status === 'present').length} / {records.length}
-            </p>
+            <p className="text-sm text-slate-500">Present: {records.filter(r => r.status === 'present').length} / {records.length}</p>
             <button onClick={handleSubmit} disabled={submitting} className="btn-primary">
               <Save className="w-4 h-4" /> {submitting ? 'Submitting...' : 'Submit Attendance'}
             </button>
@@ -171,35 +295,69 @@ export default function FacultyAttendance() {
         </div>
       )}
 
-      {/* History Tab */}
       {tab === 'history' && (
-        <div className="card">
-          {pastRecords.length === 0 ? (
-            <p className="text-slate-400 text-sm text-center py-8">No attendance records found. Select a subject first.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-100">
-                    <th className="text-left py-3 text-slate-500 font-medium">Date</th>
-                    <th className="text-left py-3 text-slate-500 font-medium">Subject</th>
-                    <th className="text-center py-3 text-slate-500 font-medium">Present</th>
-                    <th className="text-center py-3 text-slate-500 font-medium">Absent</th>
-                    <th className="text-center py-3 text-slate-500 font-medium">Total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {pastRecords.map(r => (
-                    <tr key={r._id} className="border-b border-slate-50">
-                      <td className="py-3 text-slate-800">{new Date(r.date).toLocaleDateString()}</td>
-                      <td className="py-3 text-slate-600">{r.subjectId?.name || '—'}</td>
-                      <td className="py-3 text-center"><span className="badge-green">{r.records?.filter(x => x.status === 'present').length}</span></td>
-                      <td className="py-3 text-center"><span className="badge-red">{r.records?.filter(x => x.status === 'absent').length}</span></td>
-                      <td className="py-3 text-center text-slate-500">{r.records?.length}</td>
+        <div className="space-y-4">
+          <div className="card flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-slate-800">Monthly Attendance</h3>
+              <p className="text-sm text-slate-500">Student-wise attendance for each day of the selected month.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={downloadMonthlyExport} disabled={loadingMonthly || !monthlySummary} className="btn-secondary text-sm flex items-center gap-2 disabled:opacity-50">
+                <Download className="w-4 h-4" /> {loadingMonthly ? 'Exporting...' : 'Download Month Sheet'}
+              </button>
+              <button onClick={publishMonthlyNotice} disabled={publishing || !monthlySummary} className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
+                <Send className="w-4 h-4" /> {publishing ? 'Sending...' : 'Send as Notice'}
+              </button>
+            </div>
+          </div>
+
+          {loadingMonthly ? (
+            <div className="card text-center py-10">
+              <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto" />
+            </div>
+          ) : monthlySummary ? (
+            <div className="card">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="font-semibold text-slate-800">{monthlySummary.subject.code} — {monthlySummary.subject.name}</h3>
+                  <p className="text-xs text-slate-500">Month: {month}</p>
+                </div>
+                <div className="text-sm text-slate-500">Students: {monthlySummary.students.length}</div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs min-w-max">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-slate-500">
+                      <th className="text-left py-3 px-2 sticky left-0 bg-white">Enrollment No</th>
+                      <th className="text-left py-3 px-2 sticky left-32 bg-white">Student</th>
+                      {monthlySummary.days.map(day => <th key={day} className="text-center py-3 px-2">{day}</th>)}
+                      <th className="text-center py-3 px-2">P</th>
+                      <th className="text-center py-3 px-2">A</th>
+                      <th className="text-center py-3 px-2">Marked</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {monthlySummary.students.map(student => (
+                      <tr key={student.studentId} className="border-b border-slate-100">
+                        <td className="py-2 px-2 font-mono sticky left-0 bg-white">{student.enrollmentNo}</td>
+                        <td className="py-2 px-2 sticky left-32 bg-white">{student.studentName}</td>
+                        {student.statuses.map((status, idx) => (
+                          <td key={idx} className={`py-2 px-2 text-center font-semibold ${status === 'P' ? 'text-green-700' : status === 'A' ? 'text-red-700' : 'text-slate-300'}`}>{status || '—'}</td>
+                        ))}
+                        <td className="py-2 px-2 text-center text-green-700">{student.presentDays}</td>
+                        <td className="py-2 px-2 text-center text-red-700">{student.absentDays}</td>
+                        <td className="py-2 px-2 text-center text-slate-500">{student.markedDays}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : (
+            <div className="card text-center py-12">
+              <CalendarDays className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500">Pick a month and load it to view the day-wise attendance matrix.</p>
             </div>
           )}
         </div>

@@ -41,7 +41,14 @@ router.get('/stats', authorize('admin'), ctrl.getStats);
 router.get('/fees', authorize('admin'), ctrl.getFees);
 
 router.get('/results', authorize('admin'), ctrl.getResults);
-router.post('/results/calculate-percentage', authorize('admin'), ctrl.calculatePercentage);
+router.get('/results/submission-status', authorize('admin'), ctrl.getSubmissionStatus);
+router.post('/results/generate-gradesheet', authorize('admin'), ctrl.generateGradesheet);
+router.post('/results/calculate-percentage', authorize('admin'), ctrl.generateGradesheet); // backward compat
+router.patch('/results/publish', authorize('admin'), ctrl.publishResults);
+router.get('/results/analytics', authorize('admin'), ctrl.getResultAnalytics);
+router.get('/results/export', authorize('admin'), ctrl.exportGradesheet);
+router.get('/revaluation-requests', authorize('admin'), ctrl.getRevaluationRequests);
+router.patch('/revaluation-requests/:id', authorize('admin'), ctrl.updateRevaluationRequest);
 
 // =============== TEMPORARY: Test Data Seed (Remove in Production) ===============
 router.post('/seed-test-data', authorize('admin'), ctrl.seedTestData);

@@ -38,6 +38,18 @@ export default function StudentNotices() {
                     {n.isPinned && <span className="badge-indigo flex items-center gap-1"><Pin className="w-3 h-3" /> Pinned</span>}
                   </div>
                   <p className="text-sm text-slate-600 mt-1 whitespace-pre-wrap">{n.body}</p>
+                  {Array.isArray(n.attachments) && n.attachments.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {n.attachments.map((attachment, index) => {
+                        const href = attachment.startsWith('/') ? attachment : `/${attachment}`;
+                        return (
+                          <a key={index} href={href} target="_blank" rel="noreferrer" className="text-xs font-medium text-primary-600 bg-primary-50 border border-primary-100 px-3 py-1.5 rounded-full hover:bg-primary-100 transition-colors">
+                            Download Attachment {index + 1}
+                          </a>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div className="flex items-center gap-3 mt-3 text-xs text-slate-400">
                     <span>{new Date(n.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
                     <span className="capitalize badge-blue">{n.audience}</span>

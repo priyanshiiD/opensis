@@ -1,300 +1,731 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../api/axios';
-import { BarChart3, Calculator, Award, AlertCircle } from 'lucide-react';
+import { 
+  BarChart3, Calculator, Award, AlertCircle, FileSpreadsheet, 
+  CheckCircle, Download, CheckCircle2, Circle, Search, Eye
+} from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function AdminResults() {
-  const [results, setResults] = useState([]);
+  const [tab, setTab] = useState('status');
+  
+  // Shared Filters
   const [semester, setSemester] = useState('5');
   const [session, setSession] = useState('2024-25');
+  const [branch, setBranch] = useState('');
+  
+  // Data States
+  const [statusData, setStatusData] = useState(null);
+  const [resultsData, setResultsData] = useState(null);
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [revaluations, setRevaluations] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [calculating, setCalculating] = useState(false);
-  const [tab, setTab] = useState('view');
+  const [generating, setGenerating] = useState(false);
+  const [selectedReval, setSelectedReval] = useState(null);
+  const [revalMarks, setRevalMarks] = useState({ internal: '', external: '' });
+  const [updating, setUpdating] = useState(false);
 
-  const loadResults = () => {
+  // Tab 1: Load Submission Status
+  const loadStatus = async () => {
+    if (!semester || !session) return toast.error('Enter semester and session');
     setLoading(true);
-    api.get(`/admin/results?semester=${semester}&session=${session}`)
-      .then(r => setResults(r.data.data.results || []))
-      .finally(() => setLoading(false));
+    try {
+      const q = `?semester=${semester}&session=${session}${branch ? `&branch=${branch}` : ''}`;
+      const { data } = await api.get(`/admin/results/submission-status${q}`);
+      setStatusData(data.data);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load status');
+    }
+    setLoading(false);
   };
 
-  useEffect(() => {
-    loadResults();
-  }, []);
-
-  const handleCalculatePercentage = async () => {
+  // Tab 2/3: Generate & Load Results
+  const generateGradesheet = async () => {
     if (!semester || !session) return toast.error('Enter semester and session');
-    setCalculating(true);
+    setGenerating(true);
     try {
-      const { data } = await api.post('/admin/results/calculate-percentage', {
+      const { data } = await api.post('/admin/results/generate-gradesheet', {
         semester: Number(semester),
         session,
+        branch
       });
-      toast.success(`Calculated percentage for ${data.data.updated.length} results`);
+      toast.success(`Generated gradesheet for ${data.data.totalProcessed} students`);
+      loadResults(); // reload the newly generated results
+      setTab('view');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to generate');
+    }
+    setGenerating(false);
+  };
+
+  const loadResults = async () => {
+    if (!semester || !session) return;
+    setLoading(true);
+    try {
+      const q = `?semester=${semester}&session=${session}${branch ? `&branch=${branch}` : ''}`;
+      const { data } = await api.get(`/admin/results${q}`);
+      setResultsData(data.data.results || []);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load results');
+    }
+    setLoading(false);
+  };
+
+  // Tab 4: Publish
+  const handlePublishToggle = async (publish) => {
+    if (!semester || !session) return toast.error('Enter semester and session');
+    if (publish && !window.confirm('Are you sure you want to publish these results? They will become visible to students immediately.')) return;
+    
+    setLoading(true);
+    try {
+      const { data } = await api.patch('/admin/results/publish', {
+        semester: Number(semester),
+        session,
+        branch,
+        publish
+      });
+      toast.success(data.message);
       loadResults();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to calculate');
+      toast.error(err.response?.data?.message || 'Failed to update publish status');
     }
-    setCalculating(false);
+    setLoading(false);
   };
 
-  const getStatusColor = (status) => {
-    return status === 'pass' ? 'text-green-600' : status === 'fail' ? 'text-red-600' : 'text-gray-400';
+  // Tab 5: Load Analytics
+  const loadAnalytics = async () => {
+    if (!semester || !session) return toast.error('Enter semester and session');
+    setLoading(true);
+    try {
+      const q = `?semester=${semester}&session=${session}${branch ? `&branch=${branch}` : ''}`;
+      const { data } = await api.get(`/admin/results/analytics${q}`);
+      setAnalyticsData(data.data.analytics);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to load analytics');
+    }
+    setLoading(false);
   };
 
-  const getGradeColor = (grade) => {
-    if (['O', 'A+'].includes(grade)) return 'text-emerald-600 font-bold';
-    if (['A', 'B+'].includes(grade)) return 'text-blue-600 font-bold';
-    if (['B'].includes(grade)) return 'text-amber-600 font-bold';
-    return 'text-red-600 font-bold';
+  // Export
+  const handleExport = () => {
+    if (!semester || !session) return toast.error('Enter semester and session');
+    const q = `?semester=${semester}&session=${session}${branch ? `&branch=${branch}` : ''}`;
+    window.location.href = `${api.defaults.baseURL}/admin/results/export${q}`;
   };
 
-  const passCount = results.filter(r => r.status === 'pass').length;
-  const failCount = results.filter(r => r.status === 'fail').length;
-  const avgPercentage = results.length > 0 
-    ? (results.reduce((sum, r) => sum + (r.percentage || 0), 0) / results.length).toFixed(1)
-    : 0;
+  const loadRevaluations = async () => {
+    setLoading(true);
+    try {
+      const { data } = await api.get('/admin/revaluation-requests');
+      setRevaluations(data.data.requests);
+    } catch (err) {
+      toast.error('Failed to load revaluation requests');
+    }
+    setLoading(false);
+  };
+
+  const handleUpdateReval = async (id, status, marks = null) => {
+    setUpdating(true);
+    try {
+      await api.patch(`/admin/revaluation-requests/${id}`, {
+        status,
+        internalMarks: marks?.internal,
+        externalMarks: marks?.external
+      });
+      toast.success(`Request ${status} successfully`);
+      setSelectedReval(null);
+      loadRevaluations();
+    } catch (err) {
+      toast.error('Failed to update request');
+    }
+    setUpdating(false);
+  };
+
+  // Effect to load data when tab changes
+  useEffect(() => {
+    if (tab === 'status') loadStatus();
+    if (tab === 'view' || tab === 'publish') loadResults();
+    if (tab === 'analytics') loadAnalytics();
+    if (tab === 'revaluation') loadRevaluations();
+  }, [tab, semester, session, branch]);
+
+  // UI Helpers
+  const renderFilters = (actionFn, actionText, actionIcon, isPrimary = true, loadingState = loading) => (
+    <div className="card mb-6">
+      <div className="flex flex-col sm:flex-row gap-4 items-end">
+        <div className="w-full sm:w-1/4">
+          <label className="label">Semester</label>
+          <input type="number" className="input" value={semester} onChange={e => setSemester(e.target.value)} min="1" max="8" />
+        </div>
+        <div className="w-full sm:w-1/4">
+          <label className="label">Session</label>
+          <input className="input" value={session} onChange={e => setSession(e.target.value)} placeholder="e.g. 2024-25" />
+        </div>
+        <div className="w-full sm:w-1/4">
+          <label className="label">Branch (Optional)</label>
+          <select className="input" value={branch} onChange={e => setBranch(e.target.value)}>
+            <option value="">All Branches</option>
+            <option value="IT">IT</option>
+            <option value="CSE">CSE</option>
+            <option value="ECE">ECE</option>
+            <option value="ME">ME</option>
+            <option value="CE">CE</option>
+          </select>
+        </div>
+        <div className="w-full sm:w-1/4 flex gap-2">
+          {actionFn && (
+            <button onClick={actionFn} disabled={loadingState} className={`w-full flex items-center justify-center gap-2 ${isPrimary ? 'btn-primary' : 'btn-secondary'}`}>
+              {actionIcon} {loadingState ? 'Processing...' : actionText}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+
+  const tabs = [
+    { id: 'status', label: 'Submission Status' },
+    { id: 'generate', label: 'Generate Gradesheet' },
+    { id: 'view', label: 'View Gradesheet', icon: Award },
+    { id: 'publish', label: 'Publish Control', icon: AlertCircle },
+    { id: 'analytics', label: 'Analytics', icon: BarChart3 },
+    { id: 'revaluation', label: 'Revaluation', icon: FileSpreadsheet },
+  ];
 
   return (
     <div>
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-slate-800">Results Management</h1>
-        <p className="text-slate-500 text-sm mt-1">View and calculate student results and percentages</p>
+      <div className="mb-6 flex justify-between items-end">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-800">Result Management</h1>
+          <p className="text-slate-500 text-sm mt-1">Manage, generate, and publish student results</p>
+        </div>
+        {(tab === 'view' || tab === 'analytics') && (
+          <button onClick={handleExport} className="btn-secondary flex items-center gap-2 text-sm">
+            <Download className="w-4 h-4" /> Export to Excel
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 mb-6 bg-slate-100 rounded-lg p-1 w-fit">
-        <button
-          onClick={() => setTab('view')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            tab === 'view' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-600'
-          }`}
-        >
-          View Results
-        </button>
-        <button
-          onClick={() => setTab('calculate')}
-          className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
-            tab === 'calculate' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-600'
-          }`}
-        >
-          Calculate Percentage
-        </button>
+      <div className="flex flex-wrap gap-1 mb-6 bg-slate-100 rounded-lg p-1 w-fit">
+        {tabs.map(t => (
+          <button
+            key={t.id}
+            onClick={() => setTab(t.id)}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${
+              tab === t.id ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-600 hover:bg-slate-200'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
       </div>
 
-      {/* View Tab */}
-      {tab === 'view' && (
+      {/* TAB 1: SUBMISSION STATUS */}
+      {tab === 'status' && (
         <>
-          {/* Filters */}
-          <div className="card mb-6">
-            <div className="flex flex-col sm:flex-row gap-4 items-end">
-              <div className="flex-1">
-                <label className="label">Semester</label>
-                <input
-                  type="number"
-                  className="input"
-                  value={semester}
-                  onChange={e => setSemester(e.target.value)}
-                  min="1"
-                  max="8"
-                />
-              </div>
-              <div className="flex-1">
-                <label className="label">Session</label>
-                <input
-                  className="input"
-                  value={session}
-                  onChange={e => setSession(e.target.value)}
-                  placeholder="e.g. 2024-25"
-                />
-              </div>
-              <button onClick={loadResults} disabled={loading} className="btn-primary">
-                {loading ? 'Loading...' : 'Load Results'}
-              </button>
-            </div>
-          </div>
-
-          {/* Summary Stats */}
-          {results.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 mb-6">
-              <div className="card bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-blue-600 text-xs font-medium">Total Results</p>
-                    <p className="text-3xl font-bold text-blue-700 mt-1">{results.length}</p>
-                  </div>
-                  <BarChart3 className="w-10 h-10 text-blue-300" />
-                </div>
-              </div>
-              <div className="card bg-gradient-to-br from-green-50 to-green-100 border border-green-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-green-600 text-xs font-medium">Passed</p>
-                    <p className="text-3xl font-bold text-green-700 mt-1">{passCount}</p>
-                    <p className="text-xs text-green-600 mt-1">
-                      {results.length > 0 ? ((passCount / results.length) * 100).toFixed(1) : 0}%
-                    </p>
-                  </div>
-                  <Award className="w-10 h-10 text-green-300" />
-                </div>
-              </div>
-              <div className="card bg-gradient-to-br from-red-50 to-red-100 border border-red-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-red-600 text-xs font-medium">Failed</p>
-                    <p className="text-3xl font-bold text-red-700 mt-1">{failCount}</p>
-                    <p className="text-xs text-red-600 mt-1">
-                      {results.length > 0 ? ((failCount / results.length) * 100).toFixed(1) : 0}%
-                    </p>
-                  </div>
-                  <AlertCircle className="w-10 h-10 text-red-300" />
-                </div>
-              </div>
-              <div className="card bg-gradient-to-br from-amber-50 to-amber-100 border border-amber-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-amber-600 text-xs font-medium">Avg Percentage</p>
-                    <p className="text-3xl font-bold text-amber-700 mt-1">{avgPercentage}%</p>
-                  </div>
-                  <Calculator className="w-10 h-10 text-amber-300" />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Results Table */}
+          {renderFilters(loadStatus, 'Check Status', <Search className="w-4 h-4" />)}
+          
           {loading ? (
-            <div className="card text-center py-12">
-              <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
-              <p className="text-slate-500 mt-3">Loading results...</p>
-            </div>
-          ) : results.length === 0 ? (
-            <div className="card text-center py-12">
-              <BarChart3 className="w-12 h-12 text-slate-300 mx-auto mb-3" />
-              <p className="text-slate-500">No results found for this semester/session</p>
+            <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" /></div>
+          ) : statusData ? (
+            <div className="space-y-6">
+              {/* Summary Stats */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div className="card bg-blue-50 border-blue-200">
+                  <p className="text-blue-600 text-xs font-medium">Total Subjects</p>
+                  <p className="text-3xl font-bold text-blue-700 mt-1">{statusData.totalSubjects}</p>
+                </div>
+                <div className={`card ${statusData.allComplete ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <p className={`${statusData.allComplete ? 'text-emerald-600' : 'text-amber-600'} text-xs font-medium`}>Completed Subjects</p>
+                  <p className={`text-3xl font-bold mt-1 ${statusData.allComplete ? 'text-emerald-700' : 'text-amber-700'}`}>
+                    {statusData.completedSubjects} / {statusData.totalSubjects}
+                  </p>
+                </div>
+                <div className="card bg-purple-50 border-purple-200">
+                  <p className="text-purple-600 text-xs font-medium">Total Students Expected</p>
+                  <p className="text-3xl font-bold text-purple-700 mt-1">{statusData.totalStudents}</p>
+                </div>
+              </div>
+
+              {/* Status Banner */}
+              {statusData.totalSubjects > 0 && (
+                <div className={`p-4 rounded-lg border ${statusData.allComplete ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'} flex items-center gap-3`}>
+                  {statusData.allComplete ? <CheckCircle className="w-6 h-6 text-emerald-600" /> : <AlertCircle className="w-6 h-6 text-amber-600" />}
+                  <div>
+                    <p className="font-semibold">{statusData.allComplete ? 'All marks submitted!' : 'Marks submission pending!'}</p>
+                    <p className="text-sm opacity-90">
+                      {statusData.allComplete 
+                        ? 'You can now proceed to Generate Gradesheet.' 
+                        : 'Wait for all faculty to upload marks before generating the final gradesheet.'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Subjects List */}
+              <div className="card">
+                <h3 className="font-semibold text-slate-800 mb-4">Subject-wise Submission Status</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                        <th className="py-3 px-3">Subject Code</th>
+                        <th className="py-3 px-3">Subject Name</th>
+                        <th className="py-3 px-3">Assigned Faculty</th>
+                        <th className="py-3 px-3">Marks Uploaded</th>
+                        <th className="py-3 px-3">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {statusData.subjects.map(s => (
+                        <tr key={s._id} className="border-b border-slate-100">
+                          <td className="py-3 px-3 font-medium">{s.code}</td>
+                          <td className="py-3 px-3">{s.name}</td>
+                          <td className="py-3 px-3 text-slate-600">{s.faculty}</td>
+                          <td className="py-3 px-3">
+                            <div className="flex items-center gap-2">
+                              <span className="font-medium text-slate-800">{s.studentsWithMarks}</span>
+                              <span className="text-xs text-slate-400">/ {s.totalStudents} students</span>
+                            </div>
+                            {s.totalStudents > 0 && (
+                              <div className="w-full bg-slate-200 rounded-full h-1.5 mt-1">
+                                <div 
+                                  className={`h-1.5 rounded-full ${s.isComplete ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                                  style={{ width: `${Math.min(100, (s.studentsWithMarks / s.totalStudents) * 100)}%` }}
+                                ></div>
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3 px-3">
+                            {s.isComplete ? (
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-1 rounded">
+                                <CheckCircle2 className="w-3 h-3" /> Complete
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-600 bg-amber-50 px-2 py-1 rounded">
+                                <Circle className="w-3 h-3" /> Pending
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                      {statusData.subjects.length === 0 && (
+                        <tr><td colSpan="5" className="text-center py-8 text-slate-500">No subjects found for this criteria</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
           ) : (
+            <div className="text-center py-12 text-slate-500 card">Select filters and click "Check Status" to begin.</div>
+          )}
+        </>
+      )}
+
+      {/* TAB 2: GENERATE GRADESHEET */}
+      {tab === 'generate' && (
+        <div className="max-w-2xl mx-auto">
+          <div className="card mb-6 text-center py-8">
+            <Calculator className="w-16 h-16 text-primary-600 mx-auto mb-4" />
+            <h2 className="text-xl font-bold text-slate-800">Generate Gradesheet</h2>
+            <p className="text-slate-500 mt-2 max-w-md mx-auto text-sm">
+              This process will calculate Total Marks, Grades, Grade Points, SGPA, CGPA, Percentage, and Rank for all students in the selected semester.
+            </p>
+          </div>
+
+          {renderFilters(generateGradesheet, 'Generate Now', <Calculator className="w-4 h-4" />, true, generating)}
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-5">
+            <h4 className="font-semibold text-blue-800 flex items-center gap-2 mb-3">
+              <AlertCircle className="w-5 h-5" /> What happens during generation?
+            </h4>
+            <ul className="space-y-2 text-sm text-blue-800 list-disc list-inside">
+              <li><strong>Grades:</strong> Calculated based on 10-point scale (O, A+, A, B+, B, F)</li>
+              <li><strong>SGPA:</strong> Credit-weighted average of grade points</li>
+              <li><strong>CGPA:</strong> Cumulative average including all previous published semesters</li>
+              <li><strong>Rank:</strong> Automatically assigned based on SGPA within the branch/class</li>
+              <li><strong>Status:</strong> PASS (all subjects ≥ 40) or FAIL (any subject &lt; 40)</li>
+            </ul>
+            <p className="text-xs text-blue-600 mt-4 italic">Note: You can run this multiple times. It will overwrite the previous calculations for the same semester/session.</p>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: VIEW GRADESHEET */}
+      {tab === 'view' && (
+        <>
+          {renderFilters(loadResults, 'Load Results', <Search className="w-4 h-4" />)}
+          
+          {loading ? (
+            <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" /></div>
+          ) : resultsData && resultsData.length > 0 ? (
             <div className="card">
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-sm text-left whitespace-nowrap">
                   <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50">
-                      <th className="text-left py-3 px-3 text-slate-600 font-semibold">Student</th>
-                      <th className="text-center py-3 px-3 text-slate-600 font-semibold">Enrollment</th>
-                      <th className="text-center py-3 px-3 text-slate-600 font-semibold">SGPA</th>
-                      <th className="text-center py-3 px-3 text-slate-600 font-semibold">Percentage</th>
-                      <th className="text-center py-3 px-3 text-slate-600 font-semibold">Status</th>
-                      <th className="text-left py-3 px-3 text-slate-600 font-semibold">Subjects</th>
+                    <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                      <th className="py-3 px-3 font-semibold">Rank</th>
+                      <th className="py-3 px-3 font-semibold">Enrollment No</th>
+                      <th className="py-3 px-3 font-semibold">Student Name</th>
+                      <th className="py-3 px-3 font-semibold text-center">Earned Credits</th>
+                      <th className="py-3 px-3 font-semibold text-center">SGPA</th>
+                      <th className="py-3 px-3 font-semibold text-center">CGPA</th>
+                      <th className="py-3 px-3 font-semibold text-center">Percentage</th>
+                      <th className="py-3 px-3 font-semibold text-center">Status</th>
+                      <th className="py-3 px-3 font-semibold">Remarks</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {results.map(r => (
-                      <tr key={r._id} className="border-b border-slate-100 hover:bg-slate-50">
-                        <td className="py-3 px-3 font-medium text-slate-800">
-                          {r.studentId?.firstName} {r.studentId?.lastName}
+                    {resultsData.map((r, i) => (
+                      <tr key={r._id} className={`border-b border-slate-100 hover:bg-slate-50 ${r.rank <= 3 ? 'bg-amber-50/30' : ''}`}>
+                        <td className="py-3 px-3 font-bold text-slate-700">
+                          {r.rank === 1 ? '🥇 1' : r.rank === 2 ? '🥈 2' : r.rank === 3 ? '🥉 3' : r.rank || '-'}
                         </td>
-                        <td className="py-3 px-3 text-center text-slate-600 font-mono text-xs">
-                          {r.studentId?.enrollmentNo}
-                        </td>
+                        <td className="py-3 px-3 font-mono text-xs">{r.studentId?.enrollmentNo}</td>
+                        <td className="py-3 px-3 font-medium text-slate-800">{r.studentId?.firstName} {r.studentId?.lastName}</td>
+                        <td className="py-3 px-3 text-center text-slate-600">{r.earnedCredits || 0}/{r.totalCredits || 0}</td>
+                        <td className="py-3 px-3 text-center font-bold text-primary-600">{r.sgpa ? r.sgpa.toFixed(2) : '—'}</td>
+                        <td className="py-3 px-3 text-center font-bold text-indigo-600">{r.cgpa ? r.cgpa.toFixed(2) : '—'}</td>
+                        <td className="py-3 px-3 text-center text-slate-600">{r.percentage ? `${r.percentage.toFixed(1)}%` : '—'}</td>
                         <td className="py-3 px-3 text-center">
-                          <span className="inline-block bg-primary-100 text-primary-700 px-3 py-1 rounded-full font-semibold">
-                            {r.sgpa || '—'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-center">
-                          <span className="inline-block bg-amber-100 text-amber-700 px-3 py-1 rounded-full font-semibold">
-                            {r.percentage ? r.percentage.toFixed(1) : '—'}%
-                          </span>
-                        </td>
-                        <td className="py-3 px-3 text-center">
-                          <span className={`inline-block px-3 py-1 rounded-full font-semibold text-white ${
-                            r.status === 'pass' ? 'bg-green-600' :
-                            r.status === 'fail' ? 'bg-red-600' :
-                            'bg-gray-400'
+                          <span className={`px-2 py-1 rounded text-xs font-bold text-white ${
+                            r.status === 'pass' ? 'bg-green-500' : 'bg-red-500'
                           }`}>
-                            {r.status?.toUpperCase() || 'PENDING'}
+                            {(r.status || 'pending').toUpperCase()}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-xs text-slate-600">
-                          {(r.subjectMarks || []).length === 0 ? (
-                            <span className="text-gray-400">—</span>
-                          ) : (
-                            <div className="space-y-1">
-                              {(r.subjectMarks || []).map((sm, i) => (
-                                <div key={i}>
-                                  {sm.subjectId?.code || '?'}: {sm.totalMarks || '–'} ({sm.grade || '–'})
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                        </td>
+                        <td className="py-3 px-3 text-xs text-slate-500">{r.remarks || '—'}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
             </div>
+          ) : (
+             <div className="card text-center py-12">
+              <Eye className="w-12 h-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500">No gradesheet generated for this criteria.</p>
+              <button onClick={() => setTab('generate')} className="btn-primary mt-4 text-sm">Go to Generate Tab</button>
+            </div>
           )}
         </>
       )}
 
-      {/* Calculate Tab */}
-      {tab === 'calculate' && (
-        <div className="card max-w-xl mx-auto">
-          <div className="text-center mb-6">
-            <Calculator className="w-12 h-12 text-primary-600 mx-auto mb-3" />
-            <h3 className="text-lg font-semibold text-slate-800">Calculate Result Percentages</h3>
-            <p className="text-sm text-slate-500 mt-1">
-              This will calculate the overall percentage and SGPA for all students based on their subject marks.
-              Once all subjects have marks, the aggregate percentage will be computed.
-            </p>
-          </div>
+      {/* TAB 4: PUBLISH CONTROL */}
+      {tab === 'publish' && (
+        <div className="max-w-3xl mx-auto">
+          {renderFilters(loadResults, 'Find Results', <Search className="w-4 h-4" />)}
 
-          <div className="space-y-4 bg-slate-50 p-4 rounded-lg mb-6">
-            <div>
-              <label className="label">Semester *</label>
-              <input
-                type="number"
-                className="input"
-                value={semester}
-                onChange={e => setSemester(e.target.value)}
-                min="1"
-                max="8"
-                required
-              />
+          {loading ? (
+             <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" /></div>
+          ) : resultsData && resultsData.length > 0 ? (
+            <div className="card text-center py-8">
+              {/* Calculate publish stats */}
+              {(() => {
+                const publishedCount = resultsData.filter(r => r.isPublished).length;
+                const totalCount = resultsData.length;
+                const isFullyPublished = publishedCount === totalCount;
+                
+                return (
+                  <>
+                    <div className={`w-20 h-20 mx-auto rounded-full flex items-center justify-center mb-6 ${isFullyPublished ? 'bg-emerald-100 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                      <Award className="w-10 h-10" />
+                    </div>
+                    
+                    <h2 className="text-2xl font-bold text-slate-800 mb-2">
+                      {isFullyPublished ? 'Results are Published' : 'Results are Unpublished'}
+                    </h2>
+                    
+                    <p className="text-slate-500 mb-8">
+                      Found <strong>{totalCount}</strong> results for Semester {semester} ({session}).<br/>
+                      Currently, <strong>{publishedCount}</strong> results are visible to students.
+                    </p>
+
+                    <div className="flex flex-col sm:flex-row justify-center gap-4">
+                      <button 
+                        onClick={() => handlePublishToggle(true)}
+                        disabled={isFullyPublished}
+                        className="btn-primary py-3 px-8 text-lg disabled:opacity-50"
+                      >
+                        Publish Results
+                      </button>
+                      <button 
+                        onClick={() => handlePublishToggle(false)}
+                        disabled={publishedCount === 0}
+                        className="btn-secondary py-3 px-8 text-lg disabled:opacity-50"
+                      >
+                        Unpublish Results
+                      </button>
+                    </div>
+
+                    {!isFullyPublished && (
+                      <div className="mt-8 p-4 bg-amber-50 text-amber-800 text-sm rounded-lg text-left inline-block max-w-lg">
+                        <strong>⚠️ Note:</strong> Publishing will make the gradesheet visible on the student portal. Ensure all marks are correct and verified before publishing.
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
             </div>
-            <div>
-              <label className="label">Session *</label>
-              <input
-                className="input"
-                value={session}
-                onChange={e => setSession(e.target.value)}
-                placeholder="e.g. 2024-25"
-                required
-              />
+          ) : (
+            <div className="card text-center py-12 text-slate-500">
+              No results found. Please generate the gradesheet first.
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* TAB 5: ANALYTICS */}
+      {tab === 'analytics' && (
+        <>
+          {renderFilters(loadAnalytics, 'View Analytics', <BarChart3 className="w-4 h-4" />)}
+
+          {loading ? (
+             <div className="flex justify-center py-12"><div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin" /></div>
+          ) : analyticsData ? (
+            <div className="space-y-6">
+              {/* Top Stats */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="card bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200">
+                  <p className="text-blue-600 text-xs font-medium">Total Students</p>
+                  <p className="text-3xl font-bold text-blue-700 mt-1">{analyticsData.totalStudents}</p>
+                </div>
+                <div className="card bg-gradient-to-br from-green-50 to-green-100 border-green-200">
+                  <p className="text-green-600 text-xs font-medium">Pass Percentage</p>
+                  <p className="text-3xl font-bold text-green-700 mt-1">{analyticsData.passPercentage}%</p>
+                  <p className="text-xs text-green-600 mt-1">{analyticsData.passCount} Passed</p>
+                </div>
+                <div className="card bg-gradient-to-br from-red-50 to-red-100 border-red-200">
+                  <p className="text-red-600 text-xs font-medium">Fail Count</p>
+                  <p className="text-3xl font-bold text-red-700 mt-1">{analyticsData.failCount}</p>
+                </div>
+                <div className="card bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200">
+                  <p className="text-purple-600 text-xs font-medium">Average SGPA</p>
+                  <p className="text-3xl font-bold text-purple-700 mt-1">{analyticsData.avgSgpa}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Grade Distribution */}
+                <div className="card">
+                  <h3 className="font-semibold text-slate-800 mb-4">Grade Distribution</h3>
+                  <div className="space-y-3">
+                    {Object.entries(analyticsData.gradeDistribution).map(([grade, count]) => (
+                      <div key={grade} className="flex items-center text-sm">
+                        <div className="w-12 font-bold text-slate-700">{grade}</div>
+                        <div className="flex-1 bg-slate-100 rounded-full h-4 mx-3 overflow-hidden">
+                          <div 
+                            className={`h-full ${grade === 'F' ? 'bg-red-400' : 'bg-primary-500'}`}
+                            style={{ 
+                              width: `${analyticsData.totalStudents ? (count / (analyticsData.totalStudents * analyticsData.subjectWise.length)) * 100 * 2 : 0}%` 
+                            }}
+                          />
+                        </div>
+                        <div className="w-12 text-right text-slate-500">{count}</div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Top 10 Students */}
+                <div className="card">
+                  <h3 className="font-semibold text-slate-800 mb-4">Top Performers</h3>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left">
+                      <thead>
+                        <tr className="border-b border-slate-200 text-slate-500">
+                          <th className="pb-2">Rank</th>
+                          <th className="pb-2">Student</th>
+                          <th className="pb-2 text-right">SGPA</th>
+                          <th className="pb-2 text-right">%</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {analyticsData.topStudents.map((s, i) => (
+                          <tr key={i} className="border-b border-slate-50">
+                            <td className="py-2 font-bold text-slate-700">#{s.rank}</td>
+                            <td className="py-2">
+                              <div className="font-medium text-slate-800">{s.name}</div>
+                              <div className="text-xs text-slate-400 font-mono">{s.enrollmentNo}</div>
+                            </td>
+                            <td className="py-2 text-right font-bold text-primary-600">{s.sgpa.toFixed(2)}</td>
+                            <td className="py-2 text-right text-slate-600">{s.percentage.toFixed(1)}%</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+              {/* Subject Performance */}
+              <div className="card">
+                <h3 className="font-semibold text-slate-800 mb-4">Subject-wise Performance</h3>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50 text-slate-600">
+                        <th className="py-3 px-3">Subject Code</th>
+                        <th className="py-3 px-3">Subject Name</th>
+                        <th className="py-3 px-3 text-center">Average Marks</th>
+                        <th className="py-3 px-3 text-center">Highest</th>
+                        <th className="py-3 px-3 text-center">Lowest</th>
+                        <th className="py-3 px-3 text-center">Pass %</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {analyticsData.subjectWise.map((s, i) => (
+                        <tr key={i} className="border-b border-slate-100">
+                          <td className="py-3 px-3 font-medium text-slate-800">{s.code}</td>
+                          <td className="py-3 px-3 text-slate-600">{s.name}</td>
+                          <td className="py-3 px-3 text-center font-medium">{s.average}</td>
+                          <td className="py-3 px-3 text-center text-emerald-600">{s.highest}</td>
+                          <td className="py-3 px-3 text-center text-red-600">{s.lowest}</td>
+                          <td className="py-3 px-3 text-center">
+                            <span className={`px-2 py-1 rounded text-xs font-bold ${Number(s.passPercentage) > 90 ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                              {s.passPercentage}%
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="card text-center py-12 text-slate-500">
+              No analytics data available. Ensure gradesheet is generated.
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Revaluation Tab */}
+      {tab === 'revaluation' && (
+        <div className="card">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="font-semibold text-slate-800">Revaluation Requests</h3>
+            <button onClick={loadRevaluations} className="btn-secondary text-xs">Refresh</button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-slate-50 text-slate-500 font-medium">
+                  <th className="py-3 px-4 text-left">Student</th>
+                  <th className="py-3 px-4 text-left">Subject</th>
+                  <th className="py-3 px-4 text-left">Reason</th>
+                  <th className="py-3 px-4 text-center">Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {revaluations.length === 0 ? (
+                  <tr><td colSpan="5" className="py-8 text-center text-slate-400">No requests found</td></tr>
+                ) : (
+                  revaluations.map(r => (
+                    <tr key={r._id} className="hover:bg-slate-50 transition-colors">
+                      <td className="py-4 px-4">
+                        <p className="font-medium text-slate-800">{r.studentId?.firstName} {r.studentId?.lastName}</p>
+                        <p className="text-xs text-slate-500">{r.studentId?.enrollmentNo}</p>
+                      </td>
+                      <td className="py-4 px-4">
+                        <p className="text-slate-700">{r.subjectId?.name}</p>
+                        <p className="text-xs text-slate-500">{r.subjectId?.code} | Sem {r.semester}</p>
+                      </td>
+                      <td className="py-4 px-4 max-w-xs truncate text-slate-600" title={r.reason}>{r.reason}</td>
+                      <td className="py-4 px-4 text-center">
+                        <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium uppercase ${
+                          r.status === 'pending' ? 'bg-amber-50 text-amber-600' :
+                          r.status === 'approved' ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'
+                        }`}>
+                          {r.status}
+                        </span>
+                      </td>
+                      <td className="py-4 px-4 text-right">
+                        {r.status === 'pending' && (
+                          <div className="flex justify-end gap-2">
+                            <button 
+                              onClick={() => {
+                                setSelectedReval(r);
+                                setRevalMarks({ internal: '', external: '' });
+                              }}
+                              className="px-3 py-1 bg-green-600 text-white rounded text-xs hover:bg-green-700"
+                            >
+                              Approve
+                            </button>
+                            <button 
+                              onClick={() => handleUpdateReval(r._id, 'rejected')}
+                              className="px-3 py-1 bg-red-600 text-white rounded text-xs hover:bg-red-700"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        )}
+                        <p className="text-xs text-slate-400 mt-1">{new Date(r.requestedAt).toLocaleDateString()}</p>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Approval Modal */}
+      {selectedReval && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-bold text-slate-800 text-lg">Approve & Update Marks</h3>
+              <button onClick={() => setSelectedReval(null)} className="text-slate-400 hover:text-slate-600">
+                <Search className="w-5 h-5 rotate-45" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="bg-slate-50 p-3 rounded-lg text-sm mb-4">
+                <p className="text-slate-500">Student: <span className="text-slate-800 font-medium">{selectedReval.studentId?.firstName} {selectedReval.studentId?.lastName}</span></p>
+                <p className="text-slate-500">Subject: <span className="text-slate-800 font-medium">{selectedReval.subjectId?.name}</span></p>
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="label text-xs">New Internal Marks (Max 40)</label>
+                  <input 
+                    type="number" 
+                    className="input" 
+                    placeholder="Leave blank to keep old"
+                    value={revalMarks.internal}
+                    onChange={e => setRevalMarks({...revalMarks, internal: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <label className="label text-xs">New External Marks (Max 60)</label>
+                  <input 
+                    type="number" 
+                    className="input" 
+                    placeholder="Leave blank to keep old"
+                    value={revalMarks.external}
+                    onChange={e => setRevalMarks({...revalMarks, external: e.target.value})}
+                  />
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 mt-2">Entering marks here will automatically update the student's result and recalculate their SGPA/CGPA.</p>
+            </div>
+            <div className="p-6 bg-slate-50 flex justify-end gap-3">
+              <button onClick={() => setSelectedReval(null)} className="btn-secondary">Cancel</button>
+              <button 
+                onClick={() => handleUpdateReval(selectedReval._id, 'approved', revalMarks)}
+                disabled={updating}
+                className="btn-primary"
+              >
+                {updating ? 'Processing...' : 'Confirm Approval'}
+              </button>
             </div>
           </div>
-
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-6">
-            <p className="text-sm text-blue-800">
-              <strong>How it works:</strong> The system will:
-              <ul className="list-disc list-inside mt-2 space-y-1">
-                <li>Check each student's subject marks</li>
-                <li>Calculate weighted average percentage based on credits</li>
-                <li>Compute SGPA (marks/10)</li>
-                <li>Set status as PASS if all subjects ≥ 40, otherwise FAIL</li>
-              </ul>
-            </p>
-          </div>
-
-          <button
-            onClick={handleCalculatePercentage}
-            disabled={calculating || !semester || !session}
-            className="btn-primary w-full"
-          >
-            <Calculator className="w-4 h-4" />
-            {calculating ? 'Calculating...' : 'Calculate Percentages'}
-          </button>
         </div>
       )}
     </div>

@@ -8,7 +8,7 @@ export default function StudentExam() {
   const [tab, setTab] = useState('schedule');
   const [schedules, setSchedules] = useState([]);
   const [results, setResults] = useState([]);
-  const [revalForm, setRevalForm] = useState({ subjectId: '', session: '', reason: '' });
+  const [revalForm, setRevalForm] = useState({ subjectId: '', semester: '', session: '', reason: '' });
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
   const [admitCard, setAdmitCard] = useState(null);
@@ -56,7 +56,7 @@ export default function StudentExam() {
     try {
       await api.post('/student/revaluation', revalForm);
       toast.success('Revaluation request submitted');
-      setRevalForm({ subjectId: '', session: '', reason: '' });
+      setRevalForm({ subjectId: '', semester: '', session: '', reason: '' });
     } catch {
       toast.error('Failed to submit');
     }
@@ -229,54 +229,82 @@ export default function StudentExam() {
           ) : (
             <div className="space-y-6">
               {results.map(r => (
-                <div key={r._id} className="card">
-                  <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-200">
-                    <div>
-                      <h3 className="font-semibold text-slate-800">Semester {r.semester}</h3>
-                      <p className="text-xs text-slate-500">Session: {r.session}</p>
-                    </div>
-                    <div className="text-right">
-                      <div className="grid grid-cols-3 gap-4">
-                        <div>
-                          <p className="text-2xl font-bold text-primary-600">{r.sgpa || '—'}</p>
-                          <p className="text-xs text-slate-500">SGPA</p>
-                        </div>
-                        <div>
-                          <p className="text-2xl font-bold text-amber-600">{r.percentage ? r.percentage.toFixed(1) : '—'}%</p>
-                          <p className="text-xs text-slate-500">Percentage</p>
-                        </div>
-                        <div>
-                          <span className={`mt-1 inline-block ${r.status === 'pass' ? 'badge-green' : 'badge-red'}`}>{r.status?.toUpperCase() || 'PENDING'}</span>
-                          <p className="text-xs text-slate-500 mt-1">Status</p>
-                        </div>
-                      </div>
-                    </div>
+                <div key={r._id} className="card relative print:shadow-none print:border-none print:p-0">
+                  <div className="flex justify-end mb-4 print:hidden">
+                    <button onClick={() => window.print()} className="btn-primary text-xs flex items-center gap-1">
+                      <Printer className="w-4 h-4" /> Print Gradesheet
+                    </button>
                   </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
+                  
+                  {/* Gradesheet Content */}
+                  <div className="p-8 border-2 border-slate-200 rounded-lg bg-white print:border-none print:m-0 print:p-0 print:block w-full overflow-x-auto">
+                    <div className="text-center border-b-2 border-slate-800 pb-6 mb-8">
+                      <h2 className="text-3xl font-bold text-slate-800 uppercase tracking-wider mb-2">College ERP Institution</h2>
+                      <p className="text-lg font-semibold text-slate-600">STATEMENT OF MARKS</p>
+                      <p className="text-sm text-slate-500 font-medium mt-1">Session: {r.session} | Semester: {r.semester}</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-y-4 gap-x-12 mb-10 text-sm">
+                      <div className="flex border-b border-dashed border-slate-300 pb-2"><span className="w-32 font-semibold text-slate-600">Student Name:</span> <span className="font-bold text-slate-800 uppercase">{r.studentId?.firstName} {r.studentId?.lastName}</span></div>
+                      <div className="flex border-b border-dashed border-slate-300 pb-2"><span className="w-32 font-semibold text-slate-600">Enrollment No:</span> <span className="font-bold text-slate-800 uppercase">{r.studentId?.enrollmentNo}</span></div>
+                      <div className="flex border-b border-dashed border-slate-300 pb-2"><span className="w-32 font-semibold text-slate-600">Branch:</span> <span className="font-bold text-slate-800 uppercase">{r.studentId?.branch || r.branch}</span></div>
+                      <div className="flex border-b border-dashed border-slate-300 pb-2"><span className="w-32 font-semibold text-slate-600">Status:</span> <span className={`font-bold uppercase tracking-wider ${r.status === 'pass' ? 'text-green-600' : 'text-red-600'}`}>{r.status}</span></div>
+                    </div>
+
+                    <table className="w-full text-sm mb-8 border-collapse">
                       <thead>
-                        <tr className="border-b border-slate-100">
-                          <th className="text-left py-2 text-slate-500 font-medium">Subject</th>
-                          <th className="text-center py-2 text-slate-500 font-medium">Internal</th>
-                          <th className="text-center py-2 text-slate-500 font-medium">External</th>
-                          <th className="text-center py-2 text-slate-500 font-medium">Total</th>
-                          <th className="text-center py-2 text-slate-500 font-medium">Grade</th>
+                        <tr className="bg-slate-800 text-white print:bg-slate-200 print:text-black">
+                          <th className="py-3 px-4 text-left border border-slate-800 print:border-slate-400 font-semibold">Subject Code</th>
+                          <th className="py-3 px-4 text-left border border-slate-800 print:border-slate-400 font-semibold">Subject Name</th>
+                          <th className="py-3 px-4 text-center border border-slate-800 print:border-slate-400 font-semibold w-20">Credits</th>
+                          <th className="py-3 px-4 text-center border border-slate-800 print:border-slate-400 font-semibold">Marks Obtained</th>
+                          <th className="py-3 px-4 text-center border border-slate-800 print:border-slate-400 font-semibold w-20">Grade</th>
+                          <th className="py-3 px-4 text-center border border-slate-800 print:border-slate-400 font-semibold w-20">GP</th>
                         </tr>
                       </thead>
                       <tbody>
                         {(r.subjectMarks || []).map((sm, i) => (
-                          <tr key={i} className="border-b border-slate-50">
-                            <td className="py-2 text-slate-800">{sm.subjectId?.name || '—'}<br /><span className="text-xs text-slate-400">{sm.subjectId?.code}</span></td>
-                            <td className="py-2 text-center text-slate-600">{sm.internalMarks ?? '—'}</td>
-                            <td className="py-2 text-center text-slate-600">{sm.externalMarks ?? '—'}</td>
-                            <td className="py-2 text-center font-medium text-slate-800">{sm.totalMarks ?? '—'}</td>
-                            <td className="py-2 text-center">
-                              <span className={`${(sm.totalMarks || 0) >= 40 ? 'badge-green' : 'badge-red'}`}>{sm.grade}</span>
-                            </td>
+                          <tr key={i}>
+                            <td className="py-3 px-4 border border-slate-300 font-mono text-xs">{sm.subjectId?.code}</td>
+                            <td className="py-3 px-4 border border-slate-300 font-medium text-slate-700">{sm.subjectId?.name || '—'}</td>
+                            <td className="py-3 px-4 border border-slate-300 text-center font-medium text-slate-600">{sm.credits || sm.subjectId?.credits || '—'}</td>
+                            <td className="py-3 px-4 border border-slate-300 text-center font-bold text-slate-800">{sm.totalMarks ?? '—'}</td>
+                            <td className="py-3 px-4 border border-slate-300 text-center font-bold text-slate-800">{sm.grade || '—'}</td>
+                            <td className="py-3 px-4 border border-slate-300 text-center font-medium text-slate-600">{sm.gradePoints ?? '—'}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+
+                    <div className="bg-slate-50 border-2 border-slate-200 rounded-lg p-6 grid grid-cols-2 md:grid-cols-4 gap-6 text-center print:border-slate-400 print:bg-transparent">
+                      <div>
+                        <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-2">Earned / Total Credits</p>
+                        <p className="text-2xl font-bold text-slate-800">{r.earnedCredits || 0} / {r.totalCredits || 0}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-2">SGPA</p>
+                        <p className="text-2xl font-bold text-primary-600">{r.sgpa ? r.sgpa.toFixed(2) : '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-2">CGPA</p>
+                        <p className="text-2xl font-bold text-indigo-600">{r.cgpa ? r.cgpa.toFixed(2) : '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 uppercase tracking-widest font-semibold mb-2">Percentage</p>
+                        <p className="text-2xl font-bold text-slate-800">{r.percentage ? `${r.percentage.toFixed(1)}%` : '—'}</p>
+                      </div>
+                    </div>
+
+                    <div className="mt-12 flex justify-between items-end text-sm text-slate-600 font-medium print:mt-20">
+                      <div className="space-y-1">
+                        <p>Remarks: <span className="font-bold text-slate-800 uppercase tracking-wider">{r.remarks || (r.status === 'pass' ? 'Promoted' : 'Reappear')}</span></p>
+                        <p>Date of Issue: {r.publishedAt ? new Date(r.publishedAt).toLocaleDateString() : new Date().toLocaleDateString()}</p>
+                      </div>
+                      <div className="text-center">
+                        <div className="w-48 border-b-2 border-slate-400 mb-2"></div>
+                        <p className="font-semibold uppercase tracking-wider text-xs">Controller of Examinations</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -291,8 +319,12 @@ export default function StudentExam() {
           <h3 className="font-semibold text-slate-800 mb-4">Request Revaluation</h3>
           <form onSubmit={handleRevaluation} className="space-y-4">
             <div>
-              <label className="label">Subject ID</label>
-              <input className="input" required value={revalForm.subjectId} onChange={e => setRevalForm({ ...revalForm, subjectId: e.target.value })} placeholder="Enter subject ID" />
+              <label className="label">Subject Code</label>
+              <input className="input" required value={revalForm.subjectId} onChange={e => setRevalForm({ ...revalForm, subjectId: e.target.value })} placeholder="e.g. CSE501" />
+            </div>
+            <div>
+              <label className="label">Semester</label>
+              <input type="number" className="input" required value={revalForm.semester} onChange={e => setRevalForm({ ...revalForm, semester: e.target.value })} placeholder="e.g. 5" min="1" max="8" />
             </div>
             <div>
               <label className="label">Session</label>
