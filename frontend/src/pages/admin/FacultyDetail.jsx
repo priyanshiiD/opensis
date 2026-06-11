@@ -36,8 +36,8 @@ export default function FacultyDetail() {
 
       <div className="card mb-4">
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center">
-            <User className="w-8 h-8 text-emerald-600" />
+          <div className="w-16 h-16 bg-primary-100 rounded-full flex items-center justify-center">
+            <User className="w-8 h-8 text-primary-600" />
           </div>
           <div>
             <h2 className="text-xl font-semibold text-slate-800">{faculty.firstName} {faculty.lastName}</h2>
