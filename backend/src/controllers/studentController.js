@@ -176,18 +176,63 @@ exports.getAssignments = async (req, res) => {
 exports.submitAssignment = async (req, res) => {
   try {
     const student = await Student.findOne({ userId: req.user._id });
-    const assignment = await Assignment.findById(req.params.id);
+    if (!student) {
+      return res.status(404).json({ success: false, message: 'Student profile not found' });
+    }
+
+    const assignment = await Assignment.findById(req.params.id).populate('subjectId');
     if (!assignment) return res.status(404).json({ success: false, message: 'Assignment not found' });
 
-    const existing = assignment.submissions.findIndex(s => s.studentId?.toString() === student._id.toString());
-    const fileUrl = req.file ? `/uploads/${req.file.filename}` : req.body.fileUrl;
+    // Verify student is enrolled in the subject's branch and semester
+    const subject = assignment.subjectId;
+    if (!subject || subject.branch !== student.branch || subject.semester !== student.currentSemester) {
+      return res.status(403).json({ success: false, message: 'You are not authorized to submit assignments for this subject.' });
+    }
 
-    if (existing >= 0) {
-      assignment.submissions[existing].fileUrl = fileUrl;
-      assignment.submissions[existing].submittedAt = new Date();
+    // Check if submissions are closed
+    if (assignment.isClosed) {
+      return res.status(400).json({ success: false, message: 'Submissions for this assignment have been closed.' });
+    }
+
+    const fileUrl = req.file ? `/uploads/${req.file.filename}` : req.body.fileUrl;
+    if (!fileUrl) {
+      return res.status(400).json({ success: false, message: 'Please upload a submission file.' });
+    }
+
+    // Check if the student has already submitted
+    const existingIdx = assignment.submissions.findIndex(s => s.studentId?.toString() === student._id.toString());
+    
+    if (existingIdx >= 0) {
+      const sub = assignment.submissions[existingIdx];
+      if (sub.resubmissionRequested) {
+        // Delete student's old file from disk if it exists
+        if (sub.fileUrl) {
+          const fs = require('fs');
+          const path = require('path');
+          const filePath = path.join(__dirname, '..', sub.fileUrl);
+          try {
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+            }
+          } catch (err) {
+            console.error('Failed to delete old student submission file:', err);
+          }
+        }
+
+        // Update the existing submission
+        sub.fileUrl = fileUrl;
+        sub.submittedAt = new Date();
+        sub.resubmissionRequested = false;
+        sub.marks = undefined;
+        sub.feedback = undefined;
+      } else {
+        return res.status(400).json({ success: false, message: 'You have already submitted this assignment. Editing is not allowed.' });
+      }
     } else {
+      // Create new submission
       assignment.submissions.push({ studentId: student._id, fileUrl, submittedAt: new Date() });
     }
+
     await assignment.save();
     res.json({ success: true, message: 'Submitted successfully' });
   } catch (err) {

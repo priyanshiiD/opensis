@@ -591,6 +591,47 @@ exports.publishMonthlyAttendanceNotice = async (req, res) => {
 exports.createAssignment = async (req, res) => {
   try {
     const faculty = await Faculty.findOne({ userId: req.user._id });
+    if (!faculty) {
+      return res.status(404).json({ success: false, message: 'Faculty profile not found' });
+    }
+
+    const { subjectId, dueDate: dueDateRaw, title } = req.body;
+    if (!title || !title.trim()) {
+      return res.status(400).json({ success: false, message: 'Title is required' });
+    }
+    if (!subjectId) {
+      return res.status(400).json({ success: false, message: 'Subject is required' });
+    }
+    if (!dueDateRaw) {
+      return res.status(400).json({ success: false, message: 'Due date is required' });
+    }
+
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(subjectId)) {
+      return res.status(400).json({ success: false, message: 'Invalid Subject ID' });
+    }
+
+    const subject = await Subject.findById(subjectId).lean();
+    if (!subject) {
+      return res.status(404).json({ success: false, message: 'Subject not found' });
+    }
+
+    if (!facultyOwnsSubject(faculty, subjectId, subject)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to create assignments for this subject' });
+    }
+
+    const dueDate = new Date(dueDateRaw);
+    if (Number.isNaN(dueDate.getTime())) {
+      return res.status(400).json({ success: false, message: 'Invalid due date' });
+    }
+
+    // Compare with current date (ignoring hours/minutes to allow setting today as due date)
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (dueDate < today) {
+      return res.status(400).json({ success: false, message: 'Due date cannot be in the past' });
+    }
+
     const fileUrl = req.file ? `/uploads/${req.file.filename}` : req.body.fileUrl;
     const assignment = await Assignment.create({ ...req.body, facultyId: faculty._id, fileUrl });
     res.status(201).json({ success: true, data: { assignment } });
@@ -614,10 +655,176 @@ exports.getAssignments = async (req, res) => {
 exports.getSubmissions = async (req, res) => {
   try {
     const assignment = await Assignment.findById(req.params.id)
+      .populate('subjectId')
       .populate('submissions.studentId', 'firstName lastName enrollmentNo')
       .lean();
     if (!assignment) return res.status(404).json({ success: false, message: 'Not found' });
-    res.json({ success: true, data: { submissions: assignment.submissions } });
+
+    const subject = assignment.subjectId;
+    if (!subject) {
+      return res.status(400).json({ success: false, message: 'Subject associated with assignment not found' });
+    }
+
+    // Find all students enrolled in the subject's branch and semester
+    const enrolledStudents = await Student.find({
+      branch: subject.branch,
+      currentSemester: subject.semester,
+    })
+      .sort({ enrollmentNo: 1 })
+      .select('firstName lastName enrollmentNo')
+      .lean();
+
+    const submittedStudentIds = new Set(
+      assignment.submissions
+        .map(s => s.studentId?._id ? s.studentId._id.toString() : (s.studentId ? s.studentId.toString() : null))
+        .filter(Boolean)
+    );
+
+    const submitted = assignment.submissions.map(s => ({
+      ...s,
+      isLate: !!(s.submittedAt && assignment.dueDate && new Date(s.submittedAt) > new Date(assignment.dueDate)),
+    }));
+
+    const unsubmitted = enrolledStudents
+      .filter(student => !submittedStudentIds.has(student._id.toString()))
+      .map(student => ({
+        studentId: {
+          _id: student._id,
+          firstName: student.firstName,
+          lastName: student.lastName,
+          enrollmentNo: student.enrollmentNo,
+        },
+        fileUrl: null,
+        submittedAt: null,
+      }));
+
+    res.json({
+      success: true,
+      data: {
+        submissions: {
+          submitted,
+          unsubmitted,
+          stats: {
+            totalStudents: enrolledStudents.length,
+            submittedCount: submitted.length,
+            unsubmittedCount: unsubmitted.length,
+          },
+        },
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.updateAssignment = async (req, res) => {
+  try {
+    const faculty = await Faculty.findOne({ userId: req.user._id });
+    if (!faculty) {
+      return res.status(404).json({ success: false, message: 'Faculty profile not found' });
+    }
+
+    const assignment = await Assignment.findById(req.params.id);
+    if (!assignment) {
+      return res.status(404).json({ success: false, message: 'Assignment not found' });
+    }
+
+    if (String(assignment.facultyId) !== String(faculty._id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to edit this assignment' });
+    }
+
+    const { title, description, dueDate: dueDateRaw, maxMarks, isClosed, deleteAttachment } = req.body;
+
+    if (title !== undefined) {
+      if (!title.trim()) {
+        return res.status(400).json({ success: false, message: 'Title cannot be empty' });
+      }
+      assignment.title = title;
+    }
+
+    if (description !== undefined) assignment.description = description;
+    if (maxMarks !== undefined) assignment.maxMarks = Number(maxMarks);
+    if (isClosed !== undefined) assignment.isClosed = Boolean(isClosed);
+
+    if (dueDateRaw !== undefined) {
+      const dueDate = new Date(dueDateRaw);
+      if (Number.isNaN(dueDate.getTime())) {
+        return res.status(400).json({ success: false, message: 'Invalid due date' });
+      }
+      assignment.dueDate = dueDate;
+    }
+
+    // Handle file changes (upload new, delete existing)
+    if (req.file || deleteAttachment === 'true' || deleteAttachment === true) {
+      if (assignment.fileUrl) {
+        const oldPath = path.join(__dirname, '..', assignment.fileUrl);
+        try {
+          if (fs.existsSync(oldPath)) {
+            fs.unlinkSync(oldPath);
+          }
+        } catch (err) {
+          console.error('Failed to delete old file:', err);
+        }
+      }
+
+      if (req.file) {
+        assignment.fileUrl = `/uploads/${req.file.filename}`;
+      } else {
+        assignment.fileUrl = undefined;
+      }
+    }
+
+    await assignment.save();
+    res.json({ success: true, message: 'Assignment updated successfully', data: { assignment } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.deleteAssignment = async (req, res) => {
+  try {
+    const faculty = await Faculty.findOne({ userId: req.user._id });
+    if (!faculty) {
+      return res.status(404).json({ success: false, message: 'Faculty profile not found' });
+    }
+
+    const assignment = await Assignment.findById(req.params.id);
+    if (!assignment) {
+      return res.status(404).json({ success: false, message: 'Assignment not found' });
+    }
+
+    if (String(assignment.facultyId) !== String(faculty._id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to delete this assignment' });
+    }
+
+    // Also delete assignment file from disk if it exists
+    if (assignment.fileUrl) {
+      const filePath = path.join(__dirname, '..', assignment.fileUrl);
+      try {
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      } catch (err) {
+        console.error('Failed to delete assignment file:', err);
+      }
+    }
+
+    // Delete student submissions files from disk too
+    for (const sub of assignment.submissions) {
+      if (sub.fileUrl) {
+        const subPath = path.join(__dirname, '..', sub.fileUrl);
+        try {
+          if (fs.existsSync(subPath)) {
+            fs.unlinkSync(subPath);
+          }
+        } catch (err) {
+          console.error('Failed to delete student submission file:', err);
+        }
+      }
+    }
+
+    await Assignment.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Assignment deleted successfully' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -629,10 +836,58 @@ exports.gradeSubmission = async (req, res) => {
     const assignment = await Assignment.findOne({ 'submissions._id': req.params.id });
     if (!assignment) return res.status(404).json({ success: false, message: 'Submission not found' });
     const sub = assignment.submissions.id(req.params.id);
-    sub.marks = marks;
-    sub.feedback = feedback;
+
+    if (marks !== undefined && marks !== null && marks !== '') {
+      const numMarks = Number(marks);
+      if (Number.isNaN(numMarks)) {
+        return res.status(400).json({ success: false, message: 'Marks must be a valid number' });
+      }
+      if (numMarks < 0) {
+        return res.status(400).json({ success: false, message: 'Marks cannot be negative' });
+      }
+      if (numMarks > assignment.maxMarks) {
+        return res.status(400).json({ success: false, message: `Marks cannot exceed maximum marks (${assignment.maxMarks})` });
+      }
+      sub.marks = numMarks;
+    } else {
+      sub.marks = undefined; // marks are optional, so allow clearing them
+    }
+
+    sub.feedback = feedback || '';
     await assignment.save();
-    res.json({ success: true, message: 'Graded' });
+    res.json({ success: true, message: 'Graded successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.deleteSubmission = async (req, res) => {
+  try {
+    const faculty = await Faculty.findOne({ userId: req.user._id });
+    if (!faculty) {
+      return res.status(404).json({ success: false, message: 'Faculty profile not found' });
+    }
+
+    const assignment = await Assignment.findOne({ 'submissions._id': req.params.id });
+    if (!assignment) {
+      return res.status(404).json({ success: false, message: 'Submission not found' });
+    }
+
+    if (String(assignment.facultyId) !== String(faculty._id)) {
+      return res.status(403).json({ success: false, message: 'Not authorized to manage submissions for this assignment' });
+    }
+
+    const { feedback } = req.body;
+    const sub = assignment.submissions.id(req.params.id);
+    sub.resubmissionRequested = true;
+    sub.marks = undefined; // clear score
+    if (feedback !== undefined) {
+      sub.feedback = feedback;
+    }
+    
+    await assignment.save();
+
+    res.json({ success: true, message: 'Resubmission requested successfully. Student has been notified.' });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
