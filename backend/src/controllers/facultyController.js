@@ -330,6 +330,17 @@ exports.downloadAttendanceTemplate = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No students found for this subject class' });
     }
 
+    // Check if attendance record already exists for this date
+    const existingAttendance = await getAttendanceRecordForDate(subjectId, date);
+    
+    // Create a map of studentId to status from existing attendance record
+    const statusMap = new Map();
+    if (existingAttendance && existingAttendance.records && Array.isArray(existingAttendance.records)) {
+      existingAttendance.records.forEach(record => {
+        statusMap.set(String(record.studentId), record.status);
+      });
+    }
+
     const workbook = new ExcelJS.Workbook();
     const ws = workbook.addWorksheet(`${subject.code}_${date}`);
     ws.columns = [
@@ -342,10 +353,12 @@ exports.downloadAttendanceTemplate = async (req, res) => {
     ws.views = [{ state: 'frozen', ySplit: 1 }];
 
     students.forEach((student) => {
+      // Use existing status if available, otherwise default to 'present'
+      const status = statusMap.get(String(student._id)) || 'present';
       ws.addRow({
         enrollmentNo: student.enrollmentNo,
         studentName: `${student.firstName} ${student.lastName}`,
-        status: 'present',
+        status: status,
       });
     });
 
