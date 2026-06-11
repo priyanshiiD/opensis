@@ -52,6 +52,34 @@ const getMonthBounds = (monthValue) => {
   return { start, end, daysInMonth: end.getDate(), year, month };
 };
 
+const formatDisplayDate = (date) => {
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = String(date.getFullYear()).slice(-2);
+  return `${day}/${month}/${year}`;
+};
+
+const getMonthDateEntries = (monthBounds) => Array.from({ length: monthBounds.daysInMonth }, (_, index) => {
+  const day = index + 1;
+  const date = new Date(monthBounds.year, monthBounds.month - 1, day);
+  return {
+    day,
+    date,
+    label: formatDisplayDate(date),
+  };
+});
+
+const calculateAttendancePercentage = (presentDays, markedDays) => {
+  if (!markedDays) return 0;
+  return Number(((presentDays / markedDays) * 100).toFixed(2));
+};
+
+const getAttendanceRowFill = (percentage) => {
+  if (percentage < 60) return 'FFFDE8E8';
+  if (percentage < 75) return 'FFFFF4CC';
+  return null;
+};
+
 const normalizeAttendanceStatus = (value) => {
   const normalized = String(value ?? '').trim().toLowerCase();
   if (['present', 'p', '1', 'yes', 'y', 'true'].includes(normalized)) return 'present';
@@ -330,6 +358,9 @@ exports.downloadAttendanceTemplate = async (req, res) => {
       return res.status(404).json({ success: false, message: 'No students found for this subject class' });
     }
 
+    const attendanceDate = toLocalDateOnly(date);
+    const dateLabel = attendanceDate ? formatDisplayDate(attendanceDate) : date;
+
     // Check if attendance record already exists for this date
     const existingAttendance = await getAttendanceRecordForDate(subjectId, date);
     
@@ -346,8 +377,9 @@ exports.downloadAttendanceTemplate = async (req, res) => {
     ws.columns = [
       { header: 'enrollmentNo', key: 'enrollmentNo', width: 18 },
       { header: 'studentName', key: 'studentName', width: 26 },
-      { header: 'status', key: 'status', width: 14 },
+      { header: dateLabel, key: 'attendance', width: 14 },
     ];
+
     ws.getRow(1).font = { bold: true };
     ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDDEBF7' } };
     ws.views = [{ state: 'frozen', ySplit: 1 }];
@@ -358,7 +390,7 @@ exports.downloadAttendanceTemplate = async (req, res) => {
       ws.addRow({
         enrollmentNo: student.enrollmentNo,
         studentName: `${student.firstName} ${student.lastName}`,
-        status: status,
+        attendance: status,
       });
     });
 
@@ -466,7 +498,7 @@ const buildMonthlyAttendanceSummary = async ({ faculty, subjectId, month }) => {
     .sort({ date: 1 })
     .lean();
 
-  const days = Array.from({ length: monthBounds.daysInMonth }, (_, index) => index + 1);
+  const monthDates = getMonthDateEntries(monthBounds);
   const rows = students.map((student) => ({
     studentId: student._id,
     enrollmentNo: student.enrollmentNo,
@@ -475,6 +507,7 @@ const buildMonthlyAttendanceSummary = async ({ faculty, subjectId, month }) => {
     presentDays: 0,
     absentDays: 0,
     markedDays: 0,
+    attendancePercentage: 0,
   }));
   const rowMap = new Map(rows.map(row => [String(row.studentId), row]));
 
@@ -491,21 +524,28 @@ const buildMonthlyAttendanceSummary = async ({ faculty, subjectId, month }) => {
     });
   });
 
-  return { subject, monthBounds, days, rows, attendanceDocs };
+  rows.forEach((row) => {
+    row.attendancePercentage = calculateAttendancePercentage(row.presentDays, row.markedDays);
+  });
+
+  return { subject, monthBounds, monthDates, rows, attendanceDocs };
 };
 
 const createMonthlyAttendanceWorkbook = async (summary) => {
-  const { subject, monthBounds, days, rows } = summary;
+  const { subject, monthBounds, monthDates, rows } = summary;
   const workbook = new ExcelJS.Workbook();
   const ws = workbook.addWorksheet(`${subject.code}_${monthBounds.year}_${String(monthBounds.month).padStart(2, '0')}`);
+
+  const totalColumns = 2 + monthDates.length + 4;
 
   ws.columns = [
     { header: 'enrollmentNo', key: 'enrollmentNo', width: 18 },
     { header: 'studentName', key: 'studentName', width: 26 },
-    ...days.map(day => ({ header: String(day), key: `d${day}`, width: 10 })),
+    ...monthDates.map(({ label }, index) => ({ header: label, key: `d${index + 1}`, width: 12 })),
     { header: 'presentDays', key: 'presentDays', width: 14 },
     { header: 'absentDays', key: 'absentDays', width: 14 },
     { header: 'markedDays', key: 'markedDays', width: 14 },
+    { header: 'attendancePercentage', key: 'attendancePercentage', width: 18 },
   ];
 
   ws.getRow(1).font = { bold: true };
@@ -519,11 +559,22 @@ const createMonthlyAttendanceWorkbook = async (summary) => {
       presentDays: row.presentDays,
       absentDays: row.absentDays,
       markedDays: row.markedDays,
+      attendancePercentage: `${row.attendancePercentage.toFixed(2)}%`,
     };
-    days.forEach((day, idx) => {
+    monthDates.forEach(({ day }, idx) => {
       values[`d${day}`] = row.statuses[idx] || '';
     });
-    ws.addRow(values);
+    const excelRow = ws.addRow(values);
+    const rowFill = getAttendanceRowFill(row.attendancePercentage);
+    if (rowFill) {
+      excelRow.eachCell((cell) => {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: rowFill } };
+      });
+    }
+    excelRow.getCell(totalColumns).font = {
+      bold: true,
+      color: row.attendancePercentage < 60 ? { argb: 'FF9C0006' } : row.attendancePercentage < 75 ? { argb: 'FF9C6500' } : { argb: 'FF006100' },
+    };
   });
 
   return workbook;
@@ -543,7 +594,8 @@ exports.getMonthlyAttendanceSummary = async (req, res) => {
       data: {
         subject: summary.subject,
         month: month,
-        days: summary.days,
+        days: summary.monthDates.map(entry => entry.day),
+        dayLabels: summary.monthDates.map(entry => entry.label),
         students: summary.rows,
       },
     });
@@ -587,15 +639,29 @@ exports.publishMonthlyAttendanceNotice = async (req, res) => {
     const filename = `Attendance_${summary.subject.code}_${month}.xlsx`;
     const { publicPath } = await saveAttendanceWorkbook(workbook, filename);
 
-    const notice = await Notice.create({
-      title: `Monthly Attendance - ${summary.subject.code} - ${month}`,
-      body: `Monthly attendance sheet for ${summary.subject.code} (${summary.subject.name}) for ${month} is attached.`,
-      audience: 'students',
-      attachments: [publicPath],
-      isPinned: false,
-    });
+    const detainedStudents = summary.rows.filter(row => row.attendancePercentage < 60);
 
-    res.status(201).json({ success: true, data: { notice, fileUrl: publicPath } });
+    const detainedNotices = [];
+    for (const student of detainedStudents) {
+      const detainedNotice = await Notice.create({
+        title: `⚠️ Detained Notice - ${summary.subject.code} - ${month}`,
+        body: [
+          `📋 Detention Notice for ${student.studentName} (${student.enrollmentNo})`,
+          `Subject: ${summary.subject.code} (${summary.subject.name})`,
+          `Month: ${month}`,
+          '',
+          `Your attendance is below 60% (${student.attendancePercentage.toFixed(2)}%).`,
+          'You have been detained and will NOT be allowed to appear in the exam.',
+        ].join('\n'),
+        audience: 'students',
+        targetStudentIds: [student.studentId],
+        attachments: [publicPath],
+        isPinned: false,
+      });
+      detainedNotices.push(detainedNotice);
+    }
+
+    res.status(201).json({ success: true, data: { detainedNotices, detainedCount: detainedStudents.length, fileUrl: publicPath } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

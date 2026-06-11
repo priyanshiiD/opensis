@@ -242,7 +242,20 @@ exports.submitAssignment = async (req, res) => {
 
 exports.getNotices = async (req, res) => {
   try {
-    const notices = await Notice.find({ audience: { $in: ['all', 'students'] } })
+    const student = await Student.findOne({ userId: req.user._id }).lean();
+    const noticeFilter = {
+      audience: { $in: ['all', 'students'] },
+      $or: [
+        { targetStudentIds: { $exists: false } },
+        { targetStudentIds: { $size: 0 } },
+      ],
+    };
+
+    if (student?._id) {
+      noticeFilter.$or.push({ targetStudentIds: student._id });
+    }
+
+    const notices = await Notice.find(noticeFilter)
       .sort({ isPinned: -1, createdAt: -1 })
       .lean();
     res.json({ success: true, data: { notices } });
