@@ -3,6 +3,15 @@ import { useReactToPrint } from 'react-to-print';
 import api from '../../api/axios';
 import { Calendar, BarChart3, RotateCcw, Send, Download, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
+import collegeLogo from '../gslogo.png';
+
+const CollegeLogo = () => (
+  <img
+    src={collegeLogo}
+    alt="Shri G. S. Institute of Technology & Science, Indore logo"
+    className="h-20 w-20 shrink-0 object-contain print:h-24 print:w-24"
+  />
+);
 
 export default function StudentExam() {
   const [tab, setTab] = useState('schedule');
@@ -16,8 +25,12 @@ export default function StudentExam() {
   const [resultSemester, setResultSemester] = useState('');
   const [loadingResults, setLoadingResults] = useState(false);
   const admitRef = useRef(null);
+  const gradesheetRefs = useRef({});
 
   const handlePrintAdmit = useReactToPrint({ contentRef: admitRef });
+  const handlePrintGradesheet = useReactToPrint({
+    content: () => gradesheetRefs.current.active,
+  });
 
   const downloadAdmitCard = async () => {
     setLoadingAdmit(true);
@@ -231,17 +244,37 @@ export default function StudentExam() {
               {results.map(r => (
                 <div key={r._id} className="card relative print:shadow-none print:border-none print:p-0">
                   <div className="flex justify-end mb-4 print:hidden">
-                    <button onClick={() => window.print()} className="btn-primary text-xs flex items-center gap-1">
+                    <button
+                      onClick={() => {
+                        gradesheetRefs.current.active = gradesheetRefs.current[r._id];
+                        handlePrintGradesheet();
+                      }}
+                      className="btn-primary text-xs flex items-center gap-1"
+                    >
                       <Printer className="w-4 h-4" /> Print Gradesheet
                     </button>
                   </div>
                   
                   {/* Gradesheet Content */}
-                  <div className="p-8 border-2 border-slate-200 rounded-lg bg-white print:border-none print:m-0 print:p-0 print:block w-full overflow-x-auto">
+                  <div
+                    ref={el => {
+                      if (el) {
+                        gradesheetRefs.current[r._id] = el;
+                      }
+                    }}
+                    className="p-8 border-2 border-slate-200 rounded-lg bg-white print:border-none print:m-0 print:p-0 print:block w-full overflow-x-auto"
+                  >
                     <div className="text-center border-b-2 border-slate-800 pb-6 mb-8">
-                      <h2 className="text-3xl font-bold text-slate-800 uppercase tracking-wider mb-2">College ERP Institution</h2>
-                      <p className="text-lg font-semibold text-slate-600">STATEMENT OF MARKS</p>
-                      <p className="text-sm text-slate-500 font-medium mt-1">Session: {r.session} | Semester: {r.semester}</p>
+                      <div className="flex flex-col items-center gap-4 print:gap-3">
+                        <CollegeLogo />
+                        <div>
+                          <h2 className="text-2xl md:text-3xl font-bold text-slate-900 uppercase tracking-wide leading-tight">
+                            Shri G. S. Institute of Technology & Science, Indore
+                          </h2>
+                          <p className="mt-2 text-lg font-semibold text-slate-600 uppercase tracking-[0.2em]">Statement of Marks</p>
+                          <p className="text-sm text-slate-500 font-medium mt-2">Session: {r.session} | Semester: {r.semester}</p>
+                        </div>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-y-4 gap-x-12 mb-10 text-sm">

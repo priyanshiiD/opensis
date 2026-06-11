@@ -83,6 +83,36 @@ const getClassRoster = async (subject, semester, section = '') => {
     .lean();
 };
 
+  const normalizeEnrollmentNo = (value) => String(value ?? '').trim();
+
+  const findUniqueStudentByEnrollmentNo = async (enrollmentNo) => {
+    const normalizedEnrollmentNo = normalizeEnrollmentNo(enrollmentNo);
+    if (!normalizedEnrollmentNo) return { student: null, reason: 'Missing enrollment number' };
+
+    const students = await Student.find({ enrollmentNo: normalizedEnrollmentNo }).lean();
+    if (students.length === 0) return { student: null, reason: 'Student not found in system' };
+    if (students.length > 1) return { student: null, reason: `Duplicate enrollment number exists in system: ${normalizedEnrollmentNo}` };
+
+    return { student: students[0], enrollmentNo: normalizedEnrollmentNo };
+  };
+
+  const findDuplicateEnrollmentsInRows = (rows) => {
+    const counts = new Map();
+    const duplicates = new Set();
+
+    for (const row of rows) {
+      const enrollmentNo = normalizeEnrollmentNo(row.enrollmentNo || row.EnrollmentNo || row.enrollment_no || row.rollNo || row.RollNo);
+      if (!enrollmentNo) continue;
+
+      const key = enrollmentNo.toLowerCase();
+      const nextCount = (counts.get(key) || 0) + 1;
+      counts.set(key, nextCount);
+      if (nextCount > 1) duplicates.add(enrollmentNo);
+    }
+
+    return [...duplicates];
+  };
+
 const getAttendanceRecordForDate = async (subjectId, date) => {
   const day = toLocalDateOnly(date);
   if (!day) return null;
@@ -387,11 +417,20 @@ exports.bulkUploadAttendance = async (req, res) => {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
 
+    const duplicateEnrollments = findDuplicateEnrollmentsInRows(rows);
+    if (duplicateEnrollments.length > 0) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      return res.status(400).json({
+        success: false,
+        message: `Duplicate enrollment number(s) found in upload file: ${duplicateEnrollments.join(', ')}`,
+      });
+    }
+
     const records = [];
     const results = { success: [], failed: [] };
 
     for (const [idx, row] of rows.entries()) {
-      const enrollmentNo = String(row.enrollmentNo || row.EnrollmentNo || row.enrollment_no || row.rollNo || row.RollNo || '').trim();
+      const enrollmentNo = normalizeEnrollmentNo(row.enrollmentNo || row.EnrollmentNo || row.enrollment_no || row.rollNo || row.RollNo);
       const statusRaw = row.status || row.Status || row.attendance || row.Attendance || '';
       if (!enrollmentNo) {
         results.failed.push({ row: idx + 2, reason: 'Missing enrollment number' });
@@ -991,11 +1030,20 @@ exports.bulkUploadMarks = async (req, res) => {
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
 
+    const duplicateEnrollments = findDuplicateEnrollmentsInRows(rows);
+    if (duplicateEnrollments.length > 0) {
+      try { fs.unlinkSync(req.file.path); } catch (e) { }
+      return res.status(400).json({
+        success: false,
+        message: `Duplicate enrollment number(s) found in upload file: ${duplicateEnrollments.join(', ')}`,
+      });
+    }
+
     const results = { success: [], failed: [] };
 
     for (const [idx, row] of rows.entries()) {
       try {
-        const enrollmentNo = String(row.enrollmentNo || row.EnrollmentNo || row.enrollment_no || row.rollNo || row.RollNo || '').trim();
+        const enrollmentNo = normalizeEnrollmentNo(row.enrollmentNo || row.EnrollmentNo || row.enrollment_no || row.rollNo || row.RollNo);
         const internalMarks = Number(row.internalMarks || row.InternalMarks || row.internal || row.Internal || 0);
         const externalMarks = Number(row.externalMarks || row.ExternalMarks || row.external || row.External || 0);
 
@@ -1013,9 +1061,9 @@ exports.bulkUploadMarks = async (req, res) => {
           continue;
         }
 
-        const student = await Student.findOne({ enrollmentNo }).lean();
+        const { student, reason } = await findUniqueStudentByEnrollmentNo(enrollmentNo);
         if (!student) {
-          results.failed.push({ row: idx + 2, reason: 'Student not found in system', enrollmentNo });
+          results.failed.push({ row: idx + 2, reason, enrollmentNo });
           continue;
         }
 

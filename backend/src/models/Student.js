@@ -2,7 +2,7 @@ const mongoose = require('mongoose');
 
 const studentSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
-  enrollmentNo: { type: String, required: true, unique: true },
+  enrollmentNo: { type: String, required: true, unique: true, trim: true },
   firstName: { type: String, required: true, trim: true },
   lastName: { type: String, required: true, trim: true },
   // DOB: Date of birth with age validation (15-100 years old)
