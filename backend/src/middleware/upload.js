@@ -15,7 +15,11 @@ const upload = multer({
   fileFilter: (req, file, cb) => {
     const allowed = /pdf|doc|docx|jpg|jpeg|png/;
     const ext = path.extname(file.originalname).toLowerCase().slice(1);
-    cb(null, allowed.test(ext));
+    if (allowed.test(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file format. Only PDF, DOC, DOCX, JPG, JPEG, and PNG files are allowed.'));
+    }
   },
 });
 

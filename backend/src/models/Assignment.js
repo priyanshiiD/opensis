@@ -8,12 +8,14 @@ const assignmentSchema = new mongoose.Schema({
   fileUrl: String,
   dueDate: Date,
   maxMarks: { type: Number, default: 100 },
+  isClosed: { type: Boolean, default: false },
   submissions: [{
     studentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Student', required: true },
     fileUrl: String,
     submittedAt: Date,
     marks: Number,
     feedback: String,
+    resubmissionRequested: { type: Boolean, default: false },
   }],
 }, { timestamps: true });
 
