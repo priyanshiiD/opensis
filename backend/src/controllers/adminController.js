@@ -111,17 +111,27 @@ const normalizeStudentPayloadSession = (payload) => ({
 exports.enrollStudent = async (req, res) => {
   try {
     const { email, password, enrollmentNo, firstName, lastName, branch, currentSemester, section, year, admissionYear, session, dob, gender, phone, address, fatherName, motherName } = req.body;
+    const normalizedEnrollmentNo = String(enrollmentNo ?? '').trim();
     const normalizedSession = normalizeSessionValue(session);
     const normalizedYear = normalizeStudentYear(year ?? admissionYear, currentSemester);
 
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ success: false, message: 'Email already in use' });
 
+    if (!normalizedEnrollmentNo) {
+      return res.status(400).json({ success: false, message: 'Enrollment number is required' });
+    }
+
+    const existingStudent = await Student.findOne({ enrollmentNo: normalizedEnrollmentNo });
+    if (existingStudent) {
+      return res.status(400).json({ success: false, message: 'Enrollment number already exists' });
+    }
+
     const passwordHash = await bcrypt.hash(password || 'College@123', 12);
     const user = await User.create({ email, passwordHash, role: 'student' });
 
     const student = await Student.create({
-      userId: user._id, enrollmentNo, firstName, lastName, branch, currentSemester, section, year: normalizedYear, session: normalizedSession, dob, gender, phone, address, fatherName, motherName,
+      userId: user._id, enrollmentNo: normalizedEnrollmentNo, firstName, lastName, branch, currentSemester, section, year: normalizedYear, session: normalizedSession, dob, gender, phone, address, fatherName, motherName,
     });
 
     res.status(201).json({ success: true, data: { student } });
@@ -170,6 +180,7 @@ exports.updateStudent = async (req, res) => {
     const allowed = ['enrollmentNo','firstName', 'lastName', 'dob', 'gender', 'phone', 'address', 'fatherName', 'motherName', 'branch', 'currentSemester', 'section', 'year', 'admissionYear', 'session', 'profilePhotoUrl'];
     const update = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
+    if (update.enrollmentNo !== undefined) update.enrollmentNo = String(update.enrollmentNo).trim();
     if (update.session !== undefined) update.session = normalizeSessionValue(update.session);
     if (update.year === undefined && update.admissionYear !== undefined) {
       update.year = normalizeStudentYear(update.admissionYear, update.currentSemester);
@@ -177,6 +188,14 @@ exports.updateStudent = async (req, res) => {
     if (update.year === undefined && update.currentSemester !== undefined) {
       update.year = normalizeStudentYear(undefined, update.currentSemester);
     }
+
+    if (update.enrollmentNo) {
+      const duplicate = await Student.findOne({ enrollmentNo: update.enrollmentNo, _id: { $ne: req.params.id } });
+      if (duplicate) {
+        return res.status(400).json({ success: false, message: 'Enrollment number already exists' });
+      }
+    }
+
     const student = await Student.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
     if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
     res.json({ success: true, data: { student } });
