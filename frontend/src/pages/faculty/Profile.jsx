@@ -239,8 +239,8 @@ export default function FacultyProfile() {
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         <div className="card xl:sticky xl:top-6 h-fit space-y-5">
           <div className="flex flex-col items-center text-center">
-            <div className="w-24 h-24 rounded-full bg-emerald-50 border border-emerald-100 overflow-hidden flex items-center justify-center shadow-sm">
-              {photoPreview ? <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" /> : <User className="w-12 h-12 text-emerald-600" />}
+            <div className="w-24 h-24 rounded-full bg-primary-50 border border-primary-100 overflow-hidden flex items-center justify-center shadow-sm">
+              {photoPreview ? <img src={photoPreview} alt="Profile" className="w-full h-full object-cover" /> : <User className="w-12 h-12 text-primary-600" />}
             </div>
             <h2 className="mt-4 text-lg font-bold text-slate-800">{profile.firstName} {profile.lastName}</h2>
             <p className="text-sm text-slate-500">{profile.employeeId}</p>

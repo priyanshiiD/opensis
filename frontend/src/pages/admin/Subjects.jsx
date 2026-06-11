@@ -250,7 +250,7 @@ export default function AdminSubjects() {
                       <td className="px-4 py-3">
                         {isEditing ? (
                           <div className="flex items-center gap-2">
-                            <button onClick={() => handleEdit(s._id)} disabled={editSaving} className="text-emerald-600 hover:text-emerald-700" title="Save">
+                            <button onClick={() => handleEdit(s._id)} disabled={editSaving} className="text-primary-600 hover:text-primary-700" title="Save">
                               <Check className="w-4 h-4" />
                             </button>
                             <button onClick={cancelEdit} className="text-slate-400 hover:text-slate-600" title="Cancel">

@@ -92,7 +92,7 @@ export default function StudentResults() {
             <div ref={marksheetRef} className="card">
               <div className="flex items-center justify-between border-b border-slate-200 pb-4 mb-4">
                 <div>
-                  <h2 className="text-xl font-bold text-slate-800">OpenSIS Academic Marksheet</h2>
+                  <h2 className="text-xl font-bold text-slate-800">SGSITS Academic Marksheet</h2>
                   <p className="text-xs text-slate-500">Semester {selectedResult.semester} | Session {selectedResult.session}</p>
                 </div>
                 <div className="text-right">

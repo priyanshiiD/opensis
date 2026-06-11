@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogOut, Menu, X, GraduationCap } from 'lucide-react';
+import { LogOut, Menu, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function Layout({ children, navItems }) {
@@ -21,18 +21,25 @@ export default function Layout({ children, navItems }) {
     : user?.email;
 
   return (
-    <div className="flex min-h-screen bg-slate-50">
-      {/* Sidebar */}
-      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-white border-r border-slate-200 flex flex-col transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:flex`}>
-        <div className="flex items-center gap-3 px-6 py-5 border-b border-slate-100">
-          <div className="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-            <GraduationCap className="w-5 h-5 text-white" />
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-100/70 font-sans">
+      {/* Sidebar - Redesigned Dark Sidebar Matching Login Theme */}
+      <aside className={`fixed inset-y-0 left-0 z-40 w-64 bg-[#0b0f19] border-r border-slate-950 flex flex-col h-full transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 lg:static lg:flex lg:h-full flex-shrink-0`}>
+        {/* Sidebar Header with Large SGSITS Logo & Centered Branding */}
+        <div className="flex flex-col items-center px-6 py-6 border-b border-slate-900 bg-[#070a12] relative flex-shrink-0">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center shadow-lg border border-sgsits-gold-500/20 p-1 mb-3 bg-white">
+            <img src="/sgsits_logo.png" alt="SGSITS Logo" className="w-full h-full object-contain rounded-full" />
           </div>
-          <span className="font-bold text-slate-800 text-lg">OpenSIS</span>
-          <button className="ml-auto lg:hidden" onClick={() => setSidebarOpen(false)}><X className="w-5 h-5" /></button>
+          <div className="flex flex-col items-center">
+            <span className="font-black text-white text-lg tracking-tight leading-none text-center">SGSITS INDORE</span>
+            <span className="text-[9px] font-extrabold text-sgsits-gold-500 tracking-widest uppercase mt-2 text-center">ERP PORTAL</span>
+          </div>
+          <button className="absolute top-4 right-4 lg:hidden text-slate-400 hover:text-white transition-colors" onClick={() => setSidebarOpen(false)}>
+            <X className="w-5 h-5" />
+          </button>
         </div>
 
-        <nav className="flex-1 px-3 py-4 overflow-y-auto">
+        {/* Sidebar Navigation - Scrollable middle area */}
+        <nav className="flex-1 px-3 py-4 overflow-y-auto min-h-0 no-scrollbar">
           {navItems.map(({ path, label, icon: Icon }) => {
             const active = location.pathname === path;
             return (
@@ -40,26 +47,31 @@ export default function Layout({ children, navItems }) {
                 key={path}
                 to={path}
                 onClick={() => setSidebarOpen(false)}
-                className={`flex items-center gap-3 px-3 py-2.5 rounded-lg mb-1 text-sm font-medium transition-colors ${active ? 'bg-primary-50 text-primary-600' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'}`}
+                className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl mb-1 text-sm font-semibold transition-colors ${
+                  active 
+                    ? 'bg-white/10 text-white shadow-sm border border-white/5' 
+                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                }`}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className={`w-4.5 h-4.5 transition-colors ${active ? 'text-sgsits-gold-500' : 'text-slate-400'}`} />
                 {label}
               </Link>
             );
           })}
         </nav>
 
-        <div className="px-3 py-4 border-t border-slate-100">
+        {/* Sidebar Footer User Profile - Locked at bottom */}
+        <div className="px-3 py-4 border-t border-slate-900 bg-[#070a12] flex-shrink-0">
           <div className="flex items-center gap-3 px-3 py-2 mb-2">
-            <div className="w-8 h-8 bg-primary-100 rounded-full flex items-center justify-center text-primary-600 font-semibold text-sm">
+            <div className="w-9 h-9 bg-white/10 rounded-full flex items-center justify-center text-white font-bold text-sm border border-white/5">
               {displayName?.[0]?.toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-slate-800 truncate">{displayName}</p>
-              <p className="text-xs text-slate-500 capitalize">{user?.role}</p>
+              <p className="text-sm font-bold text-white truncate">{displayName}</p>
+              <p className="text-[10px] font-bold text-sgsits-gold-500 capitalize mt-0.5">{user?.role}</p>
             </div>
           </div>
-          <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg w-full transition-colors">
+          <button onClick={handleLogout} className="flex items-center gap-3 px-3 py-2 text-sm font-semibold text-red-400 hover:bg-red-500/10 rounded-lg w-full transition-colors">
             <LogOut className="w-4 h-4" />
             Logout
           </button>
@@ -69,13 +81,14 @@ export default function Layout({ children, navItems }) {
       {/* Overlay */}
       {sidebarOpen && <div className="fixed inset-0 z-30 bg-black/20 lg:hidden" onClick={() => setSidebarOpen(false)} />}
 
-      {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-4 lg:hidden">
-          <button onClick={() => setSidebarOpen(true)}><Menu className="w-5 h-5" /></button>
-          <span className="font-semibold text-slate-800">OpenSIS</span>
+      {/* Main Container - Independent scrollbar */}
+      <div className="flex-1 flex flex-col h-full min-w-0 overflow-hidden">
+        <header className="bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-3 lg:hidden flex-shrink-0">
+          <button onClick={() => setSidebarOpen(true)} className="text-slate-600 hover:text-slate-800"><Menu className="w-5 h-5" /></button>
+          <img src="/sgsits_logo.png" alt="SGSITS Logo" className="w-7 h-7 object-contain rounded-full" />
+          <span className="font-bold text-slate-800">SGSITS</span>
         </header>
-        <main className="flex-1 p-6 overflow-auto">{children}</main>
+        <main className="flex-1 p-6 overflow-y-auto bg-slate-100/70">{children}</main>
       </div>
     </div>
   );
