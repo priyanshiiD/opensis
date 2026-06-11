@@ -6,6 +6,20 @@ import { ArrowLeft } from 'lucide-react';
 
 const BRANCHES = ['IT', 'CSE', 'ECE', 'ME', 'CE'];
 const SEMESTERS = [1,2,3,4,5,6,7,8];
+const YEAR_OPTIONS = [
+  { value: 1, label: '1st Year' },
+  { value: 2, label: '2nd Year' },
+  { value: 3, label: '3rd Year' },
+  { value: 4, label: '4th Year' },
+];
+const normalizeSessionValue = (value) => {
+  const session = String(value || '').trim();
+  const canonicalMatch = session.match(/^(\d{4})-(\d{4})$/);
+  if (canonicalMatch) return session;
+  const legacyMatch = session.match(/^(\d{4})-(\d{2})$/);
+  if (legacyMatch) return `${legacyMatch[1]}-${Number(legacyMatch[1]) + 1}`;
+  return session;
+};
 
 export default function EditStudent() {
   const { id } = useParams();
@@ -29,8 +43,8 @@ export default function EditStudent() {
         branch: s.branch || 'IT',
         currentSemester: s.currentSemester || 1,
         section: s.section || '',
-        admissionYear: s.admissionYear || new Date().getFullYear(),
-        session: s.session || '',
+        year: s.year || Math.ceil((Number(s.currentSemester) || 1) / 2),
+        session: normalizeSessionValue(s.session),
       });
     }).finally(() => setLoading(false));
   }, [id]);
@@ -96,8 +110,12 @@ export default function EditStudent() {
               </select>
             </div>
             <div><label className="label">Section</label><input className="input" value={form.section} onChange={e => set('section', e.target.value)} /></div>
-            <div><label className="label">Session</label><input className="input" value={form.session} onChange={e => set('session', e.target.value)} placeholder="2024-25" /></div>
-            <div><label className="label">Admission Year</label><input className="input" type="number" value={form.admissionYear} onChange={e => set('admissionYear', Number(e.target.value))} /></div>
+            <div><label className="label">Session</label><input className="input" value={form.session} onChange={e => set('session', e.target.value)} placeholder="2026-2027" /></div>
+            <div><label className="label">Year</label>
+              <select className="input" value={form.year} onChange={e => set('year', Number(e.target.value))}>
+                {YEAR_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </div>
           </div>
         </div>
 

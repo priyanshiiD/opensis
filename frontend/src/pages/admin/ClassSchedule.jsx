@@ -13,7 +13,7 @@ export default function AdminClassSchedule() {
   const [faculty, setFaculty] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ session: '2024-25', semester: 5, branch: 'IT', section: 'A', timetable: [{ day: 'Monday', slot: '9:00-10:00', subjectId: '', facultyId: '', room: '' }] });
+  const [form, setForm] = useState({ session: `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`, semester: 5, branch: 'IT', section: 'A', timetable: [{ day: 'Monday', slot: '9:00-10:00', subjectId: '', facultyId: '', room: '' }] });
   const [saving, setSaving] = useState(false);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -64,7 +64,7 @@ export default function AdminClassSchedule() {
           <h2 className="font-semibold text-slate-700 mb-4">New Class Schedule</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div><label className="label">Session</label><input className="input" value={form.session} onChange={e => set('session', e.target.value)} /></div>
+              <div><label className="label">Session</label><input className="input" value={form.session} onChange={e => set('session', e.target.value)} placeholder="2026-2027" /></div>
               <div><label className="label">Branch</label>
                 <select className="input" value={form.branch} onChange={e => set('branch', e.target.value)}>
                   {BRANCHES.map(b => <option key={b}>{b}</option>)}

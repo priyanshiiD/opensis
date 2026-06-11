@@ -50,13 +50,13 @@ export default function StudentProfile() {
     return age >= 15 && age <= 100;
   };
 
-  // Helper function to validate admission year (4-digit format)
-  const validateAdmissionYear = (year) => {
-    if (!year) return true;
-    const yearStr = String(year);
-    const yearNum = parseInt(yearStr);
-    const currentYear = new Date().getFullYear();
-    return /^\d{4}$/.test(yearStr) && yearNum >= 1900 && yearNum <= currentYear + 1;
+  const formatYearLabel = (value) => {
+    const year = Number(value);
+    if (year === 1) return '1st Year';
+    if (year === 2) return '2nd Year';
+    if (year === 3) return '3rd Year';
+    if (year === 4) return '4th Year';
+    return '—';
   };
 
   useEffect(() => {
@@ -260,13 +260,11 @@ export default function StudentProfile() {
               )}
             </div>
 
-            {/* Admission Year (Read-only) */}
+            {/* Year (Read-only) */}
             <div>
-              <label className="label">Admission Year</label>
+              <label className="label">Year</label>
               <p className="text-sm text-slate-800 bg-slate-50 px-3 py-2 rounded-lg">
-                {profile.admissionYear && profile.admissionYear !== 'N/A' 
-                  ? profile.admissionYear 
-                  : '—'}
+                {formatYearLabel(profile.year || Math.ceil((Number(profile.currentSemester) || 1) / 2))}
               </p>
             </div>
 

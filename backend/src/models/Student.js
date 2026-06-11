@@ -46,16 +46,15 @@ const studentSchema = new mongoose.Schema({
   branch: { type: String, required: true },
   currentSemester: { type: Number, required: true },
   section: String,
-  // Admission year with 4-digit validation (1900 to current year + 1)
-  admissionYear: {
+  // Academic year in the program (1st, 2nd, 3rd, 4th year)
+  year: {
     type: Number,
+    required: true,
     validate: {
       validator: function(v) {
-        if (!v) return true;
-        const yearStr = String(v);
-        return /^\d{4}$/.test(yearStr) && v >= 1900 && v <= new Date().getFullYear() + 1;
+        return [1, 2, 3, 4].includes(Number(v));
       },
-      message: 'Please enter a valid 4-digit admission year'
+      message: 'Please enter a valid year between 1 and 4'
     }
   },
   session: String,

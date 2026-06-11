@@ -81,7 +81,7 @@ async function seed() {
     const u = await User.create({ email, passwordHash: await hash('Student@123'), role: 'student' });
     const s = await Student.create({
       userId: u._id, enrollmentNo: enrollNo, firstName: first, lastName: last,
-      branch: 'IT', currentSemester: 5, section: 'A', admissionYear: 2022,
+      branch: 'IT', currentSemester: 5, section: 'A', year: 3,
       session: '2024-25', gender: 'female', phone: '9000000001',
       fatherName: 'Ram ' + last, motherName: 'Sita ' + last,
     });

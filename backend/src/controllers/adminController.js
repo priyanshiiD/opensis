@@ -15,10 +15,104 @@ const xlsx = require('xlsx');
 const path = require('path');
 const fs = require('fs');
 
+const normalizeSessionValue = (value) => {
+  const session = String(value || '').trim();
+  const canonicalMatch = session.match(/^(\d{4})-(\d{4})$/);
+  if (canonicalMatch) return session;
+
+  const legacyMatch = session.match(/^(\d{4})-(\d{2})$/);
+  if (legacyMatch) {
+    const startYear = legacyMatch[1];
+    return `${startYear}-${Number(startYear) + 1}`;
+  }
+
+  return session;
+};
+
+const buildSessionFilterValues = (value) => {
+  const session = String(value || '').trim();
+  if (!session) return [];
+
+  const normalized = normalizeSessionValue(session);
+  const values = [normalized];
+
+  const canonicalMatch = normalized.match(/^(\d{4})-(\d{4})$/);
+  if (canonicalMatch) {
+    const startYear = canonicalMatch[1];
+    values.push(`${startYear}-${String(Number(startYear) + 1).slice(-2)}`);
+  }
+
+  return [...new Set(values.filter(Boolean))];
+};
+
+const buildSessionRegex = (value) => {
+  const session = String(value || '').trim();
+  if (!session) return null;
+
+  const normalized = normalizeSessionValue(session);
+  const match = normalized.match(/^(\d{4})-(\d{4})$/);
+  if (!match) return new RegExp(`^\\s*${session.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*$`, 'i');
+
+  const startYear = match[1];
+  const fullEndYear = match[2];
+  const shortEndYear = fullEndYear.slice(-2);
+  return new RegExp(`^\\s*${startYear}-(?:${fullEndYear}|${shortEndYear})\\s*$`, 'i');
+};
+
+const YEAR_SEMESTER_MAP = {
+  '1': [1, 2],
+  '2': [3, 4],
+  '3': [5, 6],
+  '4': [7, 8],
+};
+
+const normalizeStudentYear = (value, currentSemester) => {
+  const directYear = Number(value);
+  if (Number.isInteger(directYear) && directYear >= 1 && directYear <= 4) {
+    return directYear;
+  }
+
+  const semesterNumber = Number(currentSemester);
+  if (Number.isInteger(semesterNumber) && semesterNumber >= 1 && semesterNumber <= 8) {
+    return Math.ceil(semesterNumber / 2);
+  }
+
+  return undefined;
+};
+
+const buildYearFilter = (value) => {
+  const year = Number(value);
+  const allowedSemesters = YEAR_SEMESTER_MAP[String(year)];
+  if (!Number.isInteger(year) || !allowedSemesters) return null;
+
+  return {
+    $or: [
+      { year },
+      { currentSemester: { $in: allowedSemesters } },
+    ],
+  };
+};
+
+const formatYearLabel = (value) => {
+  const year = Number(value);
+  if (year === 1) return '1st Year';
+  if (year === 2) return '2nd Year';
+  if (year === 3) return '3rd Year';
+  if (year === 4) return '4th Year';
+  return '';
+};
+
+const normalizeStudentPayloadSession = (payload) => ({
+  ...payload,
+  session: normalizeSessionValue(payload.session),
+});
+
 // Students
 exports.enrollStudent = async (req, res) => {
   try {
-    const { email, password, enrollmentNo, firstName, lastName, branch, currentSemester, section, admissionYear, session, dob, gender, phone, address, fatherName, motherName } = req.body;
+    const { email, password, enrollmentNo, firstName, lastName, branch, currentSemester, section, year, admissionYear, session, dob, gender, phone, address, fatherName, motherName } = req.body;
+    const normalizedSession = normalizeSessionValue(session);
+    const normalizedYear = normalizeStudentYear(year ?? admissionYear, currentSemester);
 
     const existing = await User.findOne({ email });
     if (existing) return res.status(400).json({ success: false, message: 'Email already in use' });
@@ -27,7 +121,7 @@ exports.enrollStudent = async (req, res) => {
     const user = await User.create({ email, passwordHash, role: 'student' });
 
     const student = await Student.create({
-      userId: user._id, enrollmentNo, firstName, lastName, branch, currentSemester, section, admissionYear, session, dob, gender, phone, address, fatherName, motherName,
+      userId: user._id, enrollmentNo, firstName, lastName, branch, currentSemester, section, year: normalizedYear, session: normalizedSession, dob, gender, phone, address, fatherName, motherName,
     });
 
     res.status(201).json({ success: true, data: { student } });
@@ -41,8 +135,10 @@ exports.getStudents = async (req, res) => {
     const filter = {};
     if (req.query.branch) filter.branch = req.query.branch;
     if (req.query.semester) filter.currentSemester = Number(req.query.semester);
-    if (req.query.session) filter.session = req.query.session;
-    if (req.query.admissionYear) filter.admissionYear = Number(req.query.admissionYear);
+    if (req.query.session) filter.session = buildSessionRegex(req.query.session);
+    const yearFilter = buildYearFilter(req.query.year ?? req.query.admissionYear);
+    if (yearFilter) Object.assign(filter, yearFilter);
+    if (req.query.section) filter.section = req.query.section;
     if (req.query.gender) filter.gender = req.query.gender;
     const page = Number(req.query.page) || 1;
     const limit = Number(req.query.limit) || 20;
@@ -71,9 +167,16 @@ exports.getStudent = async (req, res) => {
 
 exports.updateStudent = async (req, res) => {
   try {
-    const allowed = ['enrollmentNo','firstName', 'lastName', 'dob', 'gender', 'phone', 'address', 'fatherName', 'motherName', 'branch', 'currentSemester', 'section', 'admissionYear', 'session', 'profilePhotoUrl'];
+    const allowed = ['enrollmentNo','firstName', 'lastName', 'dob', 'gender', 'phone', 'address', 'fatherName', 'motherName', 'branch', 'currentSemester', 'section', 'year', 'admissionYear', 'session', 'profilePhotoUrl'];
     const update = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
+    if (update.session !== undefined) update.session = normalizeSessionValue(update.session);
+    if (update.year === undefined && update.admissionYear !== undefined) {
+      update.year = normalizeStudentYear(update.admissionYear, update.currentSemester);
+    }
+    if (update.year === undefined && update.currentSemester !== undefined) {
+      update.year = normalizeStudentYear(undefined, update.currentSemester);
+    }
     const student = await Student.findByIdAndUpdate(req.params.id, update, { new: true, runValidators: true });
     if (!student) return res.status(404).json({ success: false, message: 'Student not found' });
     res.json({ success: true, data: { student } });
@@ -198,7 +301,51 @@ exports.bulkUploadStudents = async (req, res) => {
   try {
     if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
 
-    const workbook = xlsx.readFile(req.file.path, { cellDates: true });
+    const file = req.file;
+    const session = normalizeSessionValue(req.body.session);
+    const year = String(req.body.year || '').trim();
+    const branch = String(req.body.branch || '').trim().toUpperCase();
+    const semester = String(req.body.semester || '').trim();
+    const section = String(req.body.section || '').trim().toUpperCase();
+    
+    // Validate required parameters
+    if (!session || !year || !branch || !semester || !section) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Missing required fields: session, year, branch, semester, section' 
+      });
+    }
+
+    const allowedBranches = ['CSE', 'IT', 'ECE', 'IP', 'BM', 'CIVIL', 'MC'];
+    if (!allowedBranches.includes(branch)) {
+      return res.status(400).json({ success: false, message: `Invalid branch ${branch}` });
+    }
+
+    // Validate semester based on year (Year to Semester mapping)
+    const yearSemesterMap = {
+      '1': [1, 2],    // 1st Year
+      '2': [3, 4],    // 2nd Year
+      '3': [5, 6],    // 3rd Year
+      '4': [7, 8],    // 4th Year
+    };
+
+    const allowedSemesters = yearSemesterMap[String(year)];
+    if (!allowedSemesters) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid year value' 
+      });
+    }
+
+    const semesterNum = Number(semester);
+    if (!allowedSemesters.includes(semesterNum)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Invalid semester ${semesterNum} for year ${year}. Allowed semesters: ${allowedSemesters.join(', ')}` 
+      });
+    }
+
+    const workbook = xlsx.readFile(file.path, { cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
 
@@ -209,11 +356,15 @@ exports.bulkUploadStudents = async (req, res) => {
         const rollNo = String(row.rollNo || row.RollNo || row.Roll || row.Roll_No || '').trim();
         const fullName = String(row.fullName || row.FullName || row.name || row.Name || '').trim();
         const email = String(row.email || row.Email || '').trim().toLowerCase();
-        const branch = String(row.branch || row.Branch || '').trim();
-        const semester = row.semester || row.Sem || row.Semester || '';
 
-        if (!rollNo || !fullName || !email || !branch || !semester) {
-          results.failed.push({ row: idx + 2, reason: 'Missing required field(s)', data: row });
+        if (!rollNo || !fullName || !email) {
+          results.failed.push({ row: idx + 2, reason: 'Missing required field(s): rollNo, fullName, or email', data: row });
+          continue;
+        }
+
+        const rowBranch = String(row.branch || row.Branch || '').trim().toUpperCase();
+        if (rowBranch && rowBranch !== branch) {
+          results.failed.push({ row: idx + 2, reason: `Branch mismatch. Selected branch is ${branch}`, data: { branch: rowBranch } });
           continue;
         }
 
@@ -261,7 +412,10 @@ exports.bulkUploadStudents = async (req, res) => {
           firstName,
           lastName,
           branch,
-          currentSemester: Number(semester),
+          currentSemester: semesterNum,
+          section,
+          year: Number(year),
+          session,
         });
 
         results.success.push({ row: idx + 2, userId: user._id, studentId: student._id, email, rollNo });
@@ -271,7 +425,7 @@ exports.bulkUploadStudents = async (req, res) => {
     }
 
     // remove uploaded file
-    try { fs.unlinkSync(req.file.path); } catch (e) { }
+    try { fs.unlinkSync(file.path); } catch (e) { }
 
     res.json({ success: true, data: results });
   } catch (err) {
@@ -287,19 +441,29 @@ exports.bulkUploadFaculty = async (req, res) => {
     const workbook = xlsx.readFile(req.file.path, { cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
     const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+    const selectedDepartment = String(req.body.department || '').trim();
 
     const results = { success: [], failed: [] };
+
+    if (!selectedDepartment) {
+      return res.status(400).json({ success: false, message: 'Department is required' });
+    }
 
     for (const [idx, row] of rows.entries()) {
       try {
         const employeeId = String(row.employeeId || row.EmployeeId || row.employee || '').trim();
         const fullName = String(row.fullName || row.FullName || row.name || row.Name || '').trim();
         const email = String(row.email || row.Email || '').trim().toLowerCase();
-        const department = String(row.department || row.Department || '').trim();
+        const department = String(row.department || row.Department || selectedDepartment).trim();
         const designation = String(row.designation || row.Designation || '').trim();
 
-        if (!employeeId || !fullName || !email || !department || !designation) {
+        if (!employeeId || !fullName || !email || !designation) {
           results.failed.push({ row: idx + 2, reason: 'Missing required field(s)', data: row });
+          continue;
+        }
+
+        if (department && department !== selectedDepartment) {
+          results.failed.push({ row: idx + 2, reason: `Department mismatch. Selected department is ${selectedDepartment}`, data: { department } });
           continue;
         }
 
@@ -338,7 +502,7 @@ exports.bulkUploadFaculty = async (req, res) => {
 
         const user = await User.create({ email, passwordHash, role: 'faculty', username });
 
-        const faculty = await Faculty.create({ userId: user._id, employeeId, firstName, lastName, department, designation });
+        const faculty = await Faculty.create({ userId: user._id, employeeId, firstName, lastName, department: selectedDepartment, designation });
 
         results.success.push({ row: idx + 2, userId: user._id, facultyId: faculty._id, email, employeeId });
       } catch (errRow) {
@@ -966,7 +1130,9 @@ exports.exportStudents = async (req, res) => {
     const filter = {};
     if (req.query.branch) filter.branch = req.query.branch;
     if (req.query.semester) filter.currentSemester = Number(req.query.semester);
-    if (req.query.admissionYear) filter.admissionYear = Number(req.query.admissionYear);
+    const yearFilter = buildYearFilter(req.query.year ?? req.query.admissionYear);
+    if (yearFilter) Object.assign(filter, yearFilter);
+    if (req.query.session) filter.session = buildSessionRegex(req.query.session);
     if (req.query.gender) filter.gender = req.query.gender;
 
     const students = await Student.find(filter)
@@ -982,7 +1148,8 @@ exports.exportStudents = async (req, res) => {
     const filterStr = [];
     if (req.query.branch) filterStr.push(`Branch-${req.query.branch}`);
     if (req.query.semester) filterStr.push(`Sem-${req.query.semester}`);
-    if (req.query.admissionYear) filterStr.push(`Year-${req.query.admissionYear}`);
+    const exportYear = req.query.year ?? req.query.admissionYear;
+    if (exportYear) filterStr.push(formatYearLabel(exportYear));
     const filename = filterStr.length > 0 
       ? `Students_${filterStr.join('_')}_${Date.now()}.xlsx`
       : `Students_${Date.now()}.xlsx`;

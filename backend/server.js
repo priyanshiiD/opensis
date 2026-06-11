@@ -123,13 +123,10 @@ const { createStudentWorkbook, createFacultyWorkbook, createStudentTemplateWorkb
 
 app.get('/docs/sample_students.xlsx', async (req, res) => {
   try {
-    // Simple sample rows — mirror docs CSV
+    // Simple sample rows matching the current bulk upload format
     const samples = [
-      { rollNo: 'S1001', fullName: 'John Doe', email: 'john.doe@example.com', branch: 'Computer Science', semester: 3 },
-      { rollNo: 'S1002', fullName: 'Jane Smith', email: 'jane.smith@example.com', branch: 'Electrical', semester: 2 },
-      { rollNo: 'S1003', fullName: 'Aman Khan', email: 'aman.khan@example.com', branch: 'Information Technology', semester: 5 },
-      { rollNo: 'S1004', fullName: 'Riya Patel', email: 'riya.patel@example.com', branch: 'Mechanical', semester: 4 },
-      { rollNo: 'S1005', fullName: 'Nikhil Sharma', email: 'nikhil.sharma@example.com', branch: 'Civil', semester: 6 },
+      { rollNo: 'STU001', fullName: 'Rahul Sharma', email: 'rahul.sharma@college.edu', branch: 'IT', semester: 1 },
+      { rollNo: 'STU002', fullName: 'Priya Verma', email: 'priya.verma@college.edu', branch: 'CSE', semester: 3 },
     ];
 
     const workbook = createStudentTemplateWorkbook(samples);
@@ -146,11 +143,8 @@ app.get('/docs/sample_students.xlsx', async (req, res) => {
 app.get('/docs/sample_faculty.xlsx', async (req, res) => {
   try {
     const samples = [
-      { employeeId: 'F1001', fullName: 'Alice Brown', email: 'alice.brown@example.com', department: 'Computer Science', designation: 'Professor' },
-      { employeeId: 'F1002', fullName: 'Bob Green', email: 'bob.green@example.com', department: 'Mathematics', designation: 'Lecturer' },
-      { employeeId: 'F1003', fullName: 'Neha Verma', email: 'neha.verma@example.com', department: 'Electrical', designation: 'Associate Professor' },
-      { employeeId: 'F1004', fullName: 'Arjun Mehta', email: 'arjun.mehta@example.com', department: 'Mechanical', designation: 'Assistant Professor' },
-      { employeeId: 'F1005', fullName: 'Pooja Singh', email: 'pooja.singh@example.com', department: 'Civil', designation: 'Senior Lecturer' },
+      { employeeId: 'FAC001', fullName: 'Amit Mishra', email: 'amit.mishra@college.edu', department: 'IT', designation: 'Professor' },
+      { employeeId: 'FAC002', fullName: 'Neha Bhat', email: 'neha.bhat@college.edu', department: 'CSE', designation: 'Assistant Professor' },
     ];
 
     const workbook = createFacultyTemplateWorkbook(samples);

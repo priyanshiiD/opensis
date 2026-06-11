@@ -58,12 +58,14 @@ frontend/
 **Endpoint:** `POST /api/admin/students/bulk-upload`
 
 **Headers:**
+
 ```
 Authorization: Bearer <token>
 Content-Type: multipart/form-data
 ```
 
 **Request:**
+
 ```
 Body: FormData {
   file: <.xlsx or .xls or .csv file>
@@ -71,6 +73,7 @@ Body: FormData {
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -111,12 +114,13 @@ Body: FormData {
 
 ### Student Upload Format
 
-| rollNo | fullName | email | branch | semester |
-|--------|----------|-------|--------|----------|
-| S1001 | John Doe | john.doe@example.com | Computer Science | 3 |
-| S1002 | Jane Smith | jane.smith@example.com | Electrical | 2 |
+| rollNo | fullName   | email                  | branch           | semester |
+| ------ | ---------- | ---------------------- | ---------------- | -------- |
+| S1001  | John Doe   | john.doe@example.com   | Computer Science | 3        |
+| S1002  | Jane Smith | jane.smith@example.com | Electrical       | 2        |
 
 **Field Requirements:**
+
 - `rollNo` (required): Unique identifier, no duplicates allowed
 - `fullName` (required): Can contain spaces, auto-split into firstName/lastName
 - `email` (required): Valid email, must be unique
@@ -125,12 +129,13 @@ Body: FormData {
 
 ### Faculty Upload Format
 
-| employeeId | fullName | email | department | designation |
-|------------|----------|-------|------------|-------------|
-| F1001 | Dr. Alice | alice@example.com | Computer Science | Professor |
-| F1002 | Mr. Bob | bob@example.com | Mathematics | Lecturer |
+| employeeId | fullName  | email             | department       | designation |
+| ---------- | --------- | ----------------- | ---------------- | ----------- |
+| F1001      | Dr. Alice | alice@example.com | Computer Science | Professor   |
+| F1002      | Mr. Bob   | bob@example.com   | Mathematics      | Lecturer    |
 
 **Field Requirements:**
+
 - `employeeId` (required): Unique identifier, no duplicates
 - `fullName` (required): Can contain spaces, auto-split
 - `email` (required): Valid email, must be unique
@@ -149,10 +154,11 @@ Body: FormData {
    - File saved temporarily in `/uploads` folder
 
 2. **Excel Parsing (xlsx)**
+
    ```javascript
    const workbook = xlsx.readFile(req.file.path);
    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-   const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+   const rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
    ```
 
 3. **Row Processing**
@@ -163,17 +169,18 @@ Body: FormData {
    - Split fullName into firstName/lastName
 
 4. **Account Creation**
+
    ```javascript
    // Generate unique username
-   const base = email.split('@')[0] // e.g., "john.doe"
+   const base = email.split("@")[0]; // e.g., "john.doe"
    let username = base;
    while (await User.findOne({ username })) {
      username = base + ++counter;
    }
-   
+
    // Hash password
-   const passwordHash = await bcrypt.hash('Welcome@123', 12);
-   
+   const passwordHash = await bcrypt.hash("Welcome@123", 12);
+
    // Create user and student/faculty records
    ```
 
@@ -187,15 +194,19 @@ Body: FormData {
 
 ```jsx
 // 1. User selects file
-<input type="file" accept=".xlsx,.xls,.csv" onChange={e => setFile(e.target.files[0])} />
+<input
+  type="file"
+  accept=".xlsx,.xls,.csv"
+  onChange={(e) => setFile(e.target.files[0])}
+/>;
 
 // 2. Create FormData
 const formData = new FormData();
-formData.append('file', file);
+formData.append("file", file);
 
 // 3. API call with Axios
-const response = await api.post('/admin/students/bulk-upload', formData, {
-  headers: { 'Content-Type': 'multipart/form-data' }
+const response = await api.post("/admin/students/bulk-upload", formData, {
+  headers: { "Content-Type": "multipart/form-data" },
 });
 
 // 4. Display results (success count + failed rows)
@@ -217,14 +228,14 @@ const response = await api.post('/admin/students/bulk-upload', formData, {
 
 ### Error Responses
 
-| Reason | Status | Action |
-|--------|--------|--------|
-| No file uploaded | 400 | Ask user to select file |
-| Invalid file type | 400 | Accept only Excel files |
+| Reason                 | Status      | Action                                |
+| ---------------------- | ----------- | ------------------------------------- |
+| No file uploaded       | 400         | Ask user to select file               |
+| Invalid file type      | 400         | Accept only Excel files               |
 | Missing required field | Row skipped | User sees "Missing required field(s)" |
-| Duplicate email | Row skipped | User sees "Duplicate email" |
-| Duplicate roll number | Row skipped | User sees "Duplicate rollNo" |
-| Database error | Row skipped | User sees error message |
+| Duplicate email        | Row skipped | User sees "Duplicate email"           |
+| Duplicate roll number  | Row skipped | User sees "Duplicate rollNo"          |
+| Database error         | Row skipped | User sees error message               |
 
 ---
 
@@ -238,12 +249,14 @@ node ../docs/generate-samples.js
 ```
 
 This creates:
-- `docs/sample_students_bulk_upload.xlsx` (10 test students)
-- `docs/sample_faculty_bulk_upload.xlsx` (10 test faculty)
+
+- `docs/sample_students_bulk_upload.xlsx` (2 test students)
+- `docs/sample_faculty_bulk_upload.xlsx` (2 test faculty)
 
 ### Manual Testing Steps
 
 1. **Start Backend & Frontend**
+
    ```bash
    cd backend && npm run dev
    cd frontend && npm run dev
@@ -272,6 +285,7 @@ This creates:
 ## User Flow After Bulk Upload
 
 ### Step 1: Bulk Enrollment (Admin)
+
 ```
 Admin uploads Excel file
 ↓
@@ -284,6 +298,7 @@ Response: "10 students enrolled successfully"
 ```
 
 ### Step 2: Student Login
+
 ```
 Student receives credentials:
   - Email: john.doe@example.com
@@ -296,6 +311,7 @@ Redirected to Profile Completion
 ```
 
 ### Step 3: Profile Completion (Student)
+
 ```
 Student updates their profile:
   - Phone number
@@ -348,12 +364,15 @@ Profile marked as complete
 ```javascript
 exports.bulkUploadStudents = async (req, res) => {
   try {
-    if (!req.file) return res.status(400).json({ success: false, message: 'No file uploaded' });
+    if (!req.file)
+      return res
+        .status(400)
+        .json({ success: false, message: "No file uploaded" });
 
     // Read Excel file
     const workbook = xlsx.readFile(req.file.path, { cellDates: true });
     const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    const rows = xlsx.utils.sheet_to_json(sheet, { defval: '' });
+    const rows = xlsx.utils.sheet_to_json(sheet, { defval: "" });
 
     const results = { success: [], failed: [] };
 
@@ -361,38 +380,57 @@ exports.bulkUploadStudents = async (req, res) => {
     for (const [idx, row] of rows.entries()) {
       try {
         // Extract fields (case-insensitive alternatives supported)
-        const rollNo = String(row.rollNo || row.RollNo || '').trim();
-        const fullName = String(row.fullName || row.FullName || row.name || '').trim();
-        const email = String(row.email || row.Email || '').trim().toLowerCase();
-        const branch = String(row.branch || row.Branch || '').trim();
-        const semester = row.semester || row.Sem || row.Semester || '';
+        const rollNo = String(row.rollNo || row.RollNo || "").trim();
+        const fullName = String(
+          row.fullName || row.FullName || row.name || "",
+        ).trim();
+        const email = String(row.email || row.Email || "")
+          .trim()
+          .toLowerCase();
+        const branch = String(row.branch || row.Branch || "").trim();
+        const semester = row.semester || row.Sem || row.Semester || "";
 
         // Validate required fields
         if (!rollNo || !fullName || !email || !branch || !semester) {
-          results.failed.push({ row: idx + 2, reason: 'Missing required field(s)', data: row });
+          results.failed.push({
+            row: idx + 2,
+            reason: "Missing required field(s)",
+            data: row,
+          });
           continue;
         }
 
         // Check for duplicates
         const dupEmail = await User.findOne({ email });
         const dupRoll = await Student.findOne({ enrollmentNo: rollNo });
-        
+
         if (dupEmail) {
-          results.failed.push({ row: idx + 2, reason: 'Duplicate email', data: { email } });
+          results.failed.push({
+            row: idx + 2,
+            reason: "Duplicate email",
+            data: { email },
+          });
           continue;
         }
         if (dupRoll) {
-          results.failed.push({ row: idx + 2, reason: 'Duplicate rollNo', data: { rollNo } });
+          results.failed.push({
+            row: idx + 2,
+            reason: "Duplicate rollNo",
+            data: { rollNo },
+          });
           continue;
         }
 
         // Split full name
         const parts = fullName.split(/\s+/);
         const firstName = parts.shift();
-        const lastName = parts.join(' ') || '';
+        const lastName = parts.join(" ") || "";
 
         // Generate unique username
-        const base = email.split('@')[0].toLowerCase().replace(/[^a-z0-9\.]/g, '');
+        const base = email
+          .split("@")[0]
+          .toLowerCase()
+          .replace(/[^a-z0-9\.]/g, "");
         let username = base;
         let i = 0;
         while (await User.findOne({ username })) {
@@ -401,11 +439,16 @@ exports.bulkUploadStudents = async (req, res) => {
         }
 
         // Hash password
-        const defaultPassword = 'Welcome@123';
+        const defaultPassword = "Welcome@123";
         const passwordHash = await bcrypt.hash(defaultPassword, 12);
 
         // Create user and student
-        const user = await User.create({ email, passwordHash, role: 'student', username });
+        const user = await User.create({
+          email,
+          passwordHash,
+          role: "student",
+          username,
+        });
         const student = await Student.create({
           userId: user._id,
           enrollmentNo: rollNo,
@@ -415,14 +458,26 @@ exports.bulkUploadStudents = async (req, res) => {
           currentSemester: Number(semester),
         });
 
-        results.success.push({ row: idx + 2, userId: user._id, studentId: student._id, email, rollNo });
+        results.success.push({
+          row: idx + 2,
+          userId: user._id,
+          studentId: student._id,
+          email,
+          rollNo,
+        });
       } catch (errRow) {
-        results.failed.push({ row: idx + 2, reason: errRow.message, data: row });
+        results.failed.push({
+          row: idx + 2,
+          reason: errRow.message,
+          data: row,
+        });
       }
     }
 
     // Clean up temporary file
-    try { fs.unlinkSync(req.file.path); } catch (e) { }
+    try {
+      fs.unlinkSync(req.file.path);
+    } catch (e) {}
 
     res.json({ success: true, data: results });
   } catch (err) {
@@ -434,9 +489,9 @@ exports.bulkUploadStudents = async (req, res) => {
 ### Frontend - React Component
 
 ```jsx
-import React, { useState } from 'react';
-import api from '../../api/axios';
-import toast from 'react-hot-toast';
+import React, { useState } from "react";
+import api from "../../api/axios";
+import toast from "react-hot-toast";
 
 export default function BulkUploadStudents() {
   const [file, setFile] = useState(null);
@@ -445,20 +500,20 @@ export default function BulkUploadStudents() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!file) return toast.error('Please select a file');
+    if (!file) return toast.error("Please select a file");
 
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append("file", file);
 
     setLoading(true);
     try {
-      const { data } = await api.post('/admin/students/bulk-upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      const { data } = await api.post("/admin/students/bulk-upload", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
       });
       setResult(data.data);
       toast.success(`Uploaded: ${data.data.success.length} students`);
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Upload failed');
+      toast.error(err.response?.data?.message || "Upload failed");
     } finally {
       setLoading(false);
     }
@@ -467,23 +522,25 @@ export default function BulkUploadStudents() {
   return (
     <div className="p-6">
       <h2 className="text-2xl font-bold mb-4">Bulk Upload Students</h2>
-      
+
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-sm font-medium mb-2">Select Excel File</label>
-          <input 
-            type="file" 
-            accept=".xlsx,.xls,.csv" 
-            onChange={e => setFile(e.target.files[0])}
+          <label className="block text-sm font-medium mb-2">
+            Select Excel File
+          </label>
+          <input
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={(e) => setFile(e.target.files[0])}
             className="block w-full"
           />
         </div>
-        <button 
-          disabled={loading} 
+        <button
+          disabled={loading}
           type="submit"
           className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
         >
-          {loading ? 'Uploading...' : 'Upload'}
+          {loading ? "Uploading..." : "Upload"}
         </button>
       </form>
 
@@ -492,10 +549,12 @@ export default function BulkUploadStudents() {
           <h3 className="font-bold mb-2">Upload Results</h3>
           <p className="text-green-600">✓ Success: {result.success.length}</p>
           <p className="text-red-600">✗ Failed: {result.failed.length}</p>
-          
+
           {result.failed.length > 0 && (
             <details className="mt-3">
-              <summary className="cursor-pointer font-medium">Failed Rows</summary>
+              <summary className="cursor-pointer font-medium">
+                Failed Rows
+              </summary>
               <ul className="mt-2 space-y-1 text-sm">
                 {result.failed.map((f, i) => (
                   <li key={i} className="text-red-600">
@@ -537,7 +596,9 @@ export default function BulkUploadStudents() {
 ## Troubleshooting
 
 ### Issue: "EADDRINUSE: port 5000"
+
 **Solution:** Kill process using port 5000
+
 ```bash
 netstat -ano | findstr :5000
 taskkill /PID <PID> /F
@@ -545,17 +606,21 @@ npm run dev
 ```
 
 ### Issue: "xlsx module not found"
+
 **Solution:** Install dependencies
+
 ```bash
 cd backend
 npm install
 ```
 
 ### Issue: "Duplicate email error for all rows"
+
 **Reason:** Same email used multiple times in Excel
 **Solution:** Ensure all emails are unique in the file
 
 ### Issue: "Missing required field(s)"
+
 **Reason:** One or more columns are missing or empty
 **Solution:** Verify Excel has all required columns with no empty cells
 
@@ -585,6 +650,7 @@ npm install
 ## Support
 
 For issues or feature requests, check:
+
 - Server logs: `backend/server.js` output
 - Browser console: F12 → Console tab
 - MongoDB logs: Check database connection

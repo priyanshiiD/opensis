@@ -4,10 +4,17 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Upload, CheckCircle, AlertCircle, X } from 'lucide-react';
 
+const DEPARTMENTS = ['IT', 'CSE', 'ECE', 'ME', 'CE', 'Mathematics', 'Physics', 'Chemistry'];
+
 export default function BulkUploadFaculty() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [department, setDepartment] = useState('');
+
+  const handleDepartmentChange = (e) => {
+    setDepartment(e.target.value);
+  };
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -26,9 +33,11 @@ export default function BulkUploadFaculty() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) return toast.error('Please select a file');
+    if (!department) return toast.error('Please select a department');
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('department', department);
     
     setLoading(true);
     try {
@@ -63,6 +72,20 @@ export default function BulkUploadFaculty() {
           <form onSubmit={handleSubmit} className="card space-y-4">
             <h2 className="font-semibold text-slate-700">Upload File</h2>
 
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Department *</label>
+              <select
+                value={department}
+                onChange={handleDepartmentChange}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Select Department</option>
+                {DEPARTMENTS.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 hover:border-slate-300 transition-colors">
               <div className="flex flex-col items-center justify-center text-center">
                 <Upload className="w-8 h-8 text-slate-400 mb-2" />
@@ -85,7 +108,7 @@ export default function BulkUploadFaculty() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={loading || !file}
+                disabled={loading || !file || !department}
                 className="flex-1 btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Uploading...' : 'Upload Faculty'}
@@ -104,8 +127,9 @@ export default function BulkUploadFaculty() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
               <p className="font-medium mb-1">Excel Format Required:</p>
               <ul className="space-y-1 text-xs">
-                <li>• Columns: employeeId, fullName, email, department, designation</li>
-                <li>• All fields are required</li>
+                <li>• Select a department above for all uploaded faculty</li>
+                <li>• Columns: employeeId, fullName, email, designation</li>
+                <li>• If the Excel sheet has a department column, it must match the selected department</li>
                 <li>• Email must be unique across all faculty</li>
                 <li>• employeeId must be unique</li>
               </ul>

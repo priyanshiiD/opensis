@@ -6,32 +6,16 @@ const path = require('path');
  * Run with: node generate-samples.js (from backend directory)
  */
 
-// Sample student data (10 test entries)
+// Sample student data (2 test entries)
 const studentData = [
-  { rollNo: 'S1001', fullName: 'John Doe', email: 'john.doe@example.com', branch: 'Computer Science', semester: 3 },
-  { rollNo: 'S1002', fullName: 'Jane Smith', email: 'jane.smith@example.com', branch: 'Electrical', semester: 2 },
-  { rollNo: 'S1003', fullName: 'Michael Johnson', email: 'michael.j@example.com', branch: 'Computer Science', semester: 3 },
-  { rollNo: 'S1004', fullName: 'Sarah Williams', email: 'sarah.w@example.com', branch: 'Mechanical', semester: 1 },
-  { rollNo: 'S1005', fullName: 'David Brown', email: 'david.brown@example.com', branch: 'Civil', semester: 4 },
-  { rollNo: 'S1006', fullName: 'Emily Davis', email: 'emily.davis@example.com', branch: 'Computer Science', semester: 2 },
-  { rollNo: 'S1007', fullName: 'Robert Miller', email: 'robert.m@example.com', branch: 'Electrical', semester: 3 },
-  { rollNo: 'S1008', fullName: 'Lisa Anderson', email: 'lisa.a@example.com', branch: 'Electronics', semester: 1 },
-  { rollNo: 'S1009', fullName: 'James Wilson', email: 'james.w@example.com', branch: 'Computer Science', semester: 4 },
-  { rollNo: 'S1010', fullName: 'Maria Garcia', email: 'maria.g@example.com', branch: 'Mechanical', semester: 2 },
+  { rollNo: 'STU001', fullName: 'Rahul Sharma', email: 'rahul.sharma@college.edu', branch: 'IT', semester: 1 },
+  { rollNo: 'STU002', fullName: 'Priya Verma', email: 'priya.verma@college.edu', branch: 'CSE', semester: 3 },
 ];
 
-// Sample faculty data (10 test entries)
+// Sample faculty data (2 test entries)
 const facultyData = [
-  { employeeId: 'F1001', fullName: 'Dr. Alice Brown', email: 'alice.brown@example.com', department: 'Computer Science', designation: 'Professor' },
-  { employeeId: 'F1002', fullName: 'Mr. Bob Green', email: 'bob.green@example.com', department: 'Mathematics', designation: 'Lecturer' },
-  { employeeId: 'F1003', fullName: 'Dr. Carol White', email: 'carol.white@example.com', department: 'Electrical', designation: 'Associate Professor' },
-  { employeeId: 'F1004', fullName: 'Mr. David Black', email: 'david.black@example.com', department: 'Computer Science', designation: 'Assistant Professor' },
-  { employeeId: 'F1005', fullName: 'Dr. Emma Red', email: 'emma.red@example.com', department: 'Physics', designation: 'Professor' },
-  { employeeId: 'F1006', fullName: 'Mr. Frank Gray', email: 'frank.gray@example.com', department: 'Chemistry', designation: 'Lecturer' },
-  { employeeId: 'F1007', fullName: 'Dr. Grace Blue', email: 'grace.blue@example.com', department: 'Mechanical', designation: 'Associate Professor' },
-  { employeeId: 'F1008', fullName: 'Mr. Henry Pink', email: 'henry.pink@example.com', department: 'Civil', designation: 'Lecturer' },
-  { employeeId: 'F1009', fullName: 'Dr. Iris Yellow', email: 'iris.yellow@example.com', department: 'Electronics', designation: 'Professor' },
-  { employeeId: 'F1010', fullName: 'Mr. Jack Purple', email: 'jack.purple@example.com', department: 'Computer Science', designation: 'Assistant Professor' },
+  { employeeId: 'FAC001', fullName: 'Amit Mishra', email: 'amit.mishra@college.edu', department: 'IT', designation: 'Professor' },
+  { employeeId: 'FAC002', fullName: 'Neha Bhat', email: 'neha.bhat@college.edu', department: 'CSE', designation: 'Assistant Professor' },
 ];
 
 async function generateStudentExcel() {
@@ -102,8 +86,8 @@ async function main() {
     await generateFacultyExcel();
     console.log('\n✨ Sample files generated successfully!\n');
     console.log('📝 Files created:');
-    console.log('   1. docs/sample_students_bulk_upload.xlsx - 10 test students');
-    console.log('   2. docs/sample_faculty_bulk_upload.xlsx - 10 test faculty members\n');
+    console.log('   1. docs/sample_students_bulk_upload.xlsx - 2 test students');
+    console.log('   2. docs/sample_faculty_bulk_upload.xlsx - 2 test faculty members\n');
     console.log('💡 Usage: Upload these files via the admin dashboard bulk upload feature.\n');
   } catch (err) {
     console.error('❌ Error generating files:', err.message);

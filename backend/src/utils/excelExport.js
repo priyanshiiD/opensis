@@ -1,5 +1,14 @@
 const ExcelJS = require('exceljs');
 
+const formatYearLabel = (value) => {
+  const year = Number(value);
+  if (year === 1) return '1st Year';
+  if (year === 2) return '2nd Year';
+  if (year === 3) return '3rd Year';
+  if (year === 4) return '4th Year';
+  return '';
+};
+
 // Create a workbook with students data
 const createStudentWorkbook = (students) => {
   const workbook = new ExcelJS.Workbook();
@@ -14,7 +23,7 @@ const createStudentWorkbook = (students) => {
     { header: 'Branch/Department', key: 'branch', width: 15 },
     { header: 'Current Semester', key: 'currentSemester', width: 15 },
     { header: 'Section', key: 'section', width: 10 },
-    { header: 'Admission Year', key: 'admissionYear', width: 15 },
+    { header: 'Year', key: 'year', width: 15 },
     { header: 'Session', key: 'session', width: 12 },
     { header: 'DOB', key: 'dob', width: 12 },
     { header: 'Gender', key: 'gender', width: 10 },
@@ -39,7 +48,7 @@ const createStudentWorkbook = (students) => {
       branch: student.branch,
       currentSemester: student.currentSemester,
       section: student.section || '',
-      admissionYear: student.admissionYear,
+      year: formatYearLabel(student.year),
       session: student.session || '',
       dob: student.dob ? new Date(student.dob).toLocaleDateString() : '',
       gender: student.gender || '',

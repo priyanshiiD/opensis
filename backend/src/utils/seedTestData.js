@@ -70,7 +70,7 @@ async function createTestStudents() {
       lastName,
       branch,
       currentSemester: semester,
-      admissionYear: 2023,
+      year: Math.ceil(semester / 2),
       session: '2024-25',
     });
   }
