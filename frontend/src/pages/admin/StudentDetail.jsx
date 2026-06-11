@@ -3,6 +3,24 @@ import { useParams, Link } from 'react-router-dom';
 import api from '../../api/axios';
 import { ArrowLeft, User, Pencil } from 'lucide-react';
 
+const normalizeSessionValue = (value) => {
+  const session = String(value || '').trim();
+  const canonicalMatch = session.match(/^(\d{4})-(\d{4})$/);
+  if (canonicalMatch) return session;
+  const legacyMatch = session.match(/^(\d{4})-(\d{2})$/);
+  if (legacyMatch) return `${legacyMatch[1]}-${Number(legacyMatch[1]) + 1}`;
+  return session;
+};
+
+const formatYearLabel = (value) => {
+  const year = Number(value);
+  if (year === 1) return '1st Year';
+  if (year === 2) return '2nd Year';
+  if (year === 3) return '3rd Year';
+  if (year === 4) return '4th Year';
+  return '—';
+};
+
 function Field({ label, value }) {
   return (
     <div>
@@ -70,8 +88,8 @@ export default function StudentDetail() {
             <Field label="Branch" value={student.branch} />
             <Field label="Current Semester" value={student.currentSemester} />
             <Field label="Section" value={student.section} />
-            <Field label="Session" value={student.session} />
-            <Field label="Admission Year" value={student.admissionYear} />
+            <Field label="Session" value={normalizeSessionValue(student.session)} />
+            <Field label="Year" value={formatYearLabel(student.year || Math.ceil((Number(student.currentSemester) || 1) / 2))} />
             <Field label="Enrolled On" value={new Date(student.createdAt).toLocaleDateString()} />
           </div>
         </div>

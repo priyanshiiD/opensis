@@ -11,7 +11,7 @@ export default function AdminResults() {
   
   // Shared Filters
   const [semester, setSemester] = useState('5');
-  const [session, setSession] = useState('2024-25');
+  const [session, setSession] = useState(`${new Date().getFullYear()}-${new Date().getFullYear() + 1}`);
   const [branch, setBranch] = useState('');
   
   // Data States
@@ -159,7 +159,7 @@ export default function AdminResults() {
         </div>
         <div className="w-full sm:w-1/4">
           <label className="label">Session</label>
-          <input className="input" value={session} onChange={e => setSession(e.target.value)} placeholder="e.g. 2024-25" />
+          <input className="input" value={session} onChange={e => setSession(e.target.value)} placeholder="e.g. 2026-2027" />
         </div>
         <div className="w-full sm:w-1/4">
           <label className="label">Branch (Optional)</label>

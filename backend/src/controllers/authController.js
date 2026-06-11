@@ -166,7 +166,7 @@ exports.register = async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 12);
     const user = await User.create({ email, passwordHash, role: 'student' });
 
-    // Create student profile with minimal fields; admin may later fill enrollmentNo, admissionYear, etc.
+    // Create student profile with minimal fields; admin may later fill enrollmentNo, year, etc.
     const student = await Student.create({
       userId: user._id,
       firstName,

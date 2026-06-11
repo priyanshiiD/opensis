@@ -27,7 +27,7 @@ exports.getProfile = async (req, res) => {
       // Provide fallback values for fields that might be missing in older documents
       section: student.section || 'N/A',
       session: student.session || new Date().getFullYear() + '-' + (new Date().getFullYear() + 1),
-      admissionYear: student.admissionYear || new Date().getFullYear(),
+      year: student.year || Math.ceil((Number(student.currentSemester) || 1) / 2),
     };
 
     res.json({ success: true, data: { student: profileWithEmail } });
@@ -65,7 +65,7 @@ exports.updateProfile = async (req, res) => {
     }
 
     // Prevent modification of admin-controlled fields even if provided
-    const forbidden = ['enrollmentNo', 'admissionYear', 'fatherName', 'motherName', 'branch', 'currentSemester', 'section', 'session', 'firstName', 'lastName'];
+    const forbidden = ['enrollmentNo', 'year', 'admissionYear', 'fatherName', 'motherName', 'branch', 'currentSemester', 'section', 'session', 'firstName', 'lastName'];
     forbidden.forEach(f => { if (req.body[f] !== undefined) delete req.body[f]; });
 
     // Validate gender if provided

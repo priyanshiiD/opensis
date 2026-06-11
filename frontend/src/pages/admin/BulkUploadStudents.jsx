@@ -1,13 +1,93 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { ArrowLeft, Upload, CheckCircle, AlertCircle, X } from 'lucide-react';
 
+// Year to Semester mapping
+const YEAR_SEMESTER_MAP = {
+  '1': [1, 2],      // 1st Year: Semesters 1, 2
+  '2': [3, 4],      // 2nd Year: Semesters 3, 4
+  '3': [5, 6],      // 3rd Year: Semesters 5, 6
+  '4': [7, 8],      // 4th Year: Semesters 7, 8
+};
+
+// Generate session options (current year and 4 years back)
+const generateSessionOptions = () => {
+  const sessions = [];
+  const currentYear = new Date().getFullYear();
+  for (let i = 0; i < 5; i++) {
+    const year = currentYear - i;
+    sessions.push(`${year}-${year + 1}`);
+  }
+  return sessions;
+};
+
+const SESSIONS = generateSessionOptions();
+const YEARS = ['1', '2', '3', '4'];
+const BRANCHES = ['CSE', 'IT', 'ECE', 'IP', 'BM', 'CIVIL', 'MC'];
+const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+const getYearLabel = (value) => {
+  if (value === '1') return '1st Year';
+  if (value === '2') return '2nd Year';
+  if (value === '3') return '3rd Year';
+  return '4th Year';
+};
+
+const getSemesterLabel = (value) => {
+  const suffixMap = { 1: 'st', 2: 'nd', 3: 'rd' };
+  const suffix = suffixMap[value] || 'th';
+  return `${value}${suffix} Semester`;
+};
+
 export default function BulkUploadStudents() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
+  const [session, setSession] = useState('');
+  const [year, setYear] = useState('');
+  const [branch, setBranch] = useState('');
+  const [semester, setSemester] = useState('');
+  const [section, setSection] = useState('');
+
+  // Calculate allowed semesters based on selected year
+  const allowedSemesters = useMemo(() => {
+    return year ? YEAR_SEMESTER_MAP[year] || [] : [];
+  }, [year]);
+
+  const handleSessionChange = (e) => {
+    setSession(e.target.value);
+    setYear('');
+    setBranch('');
+    setSemester('');
+    setSection('');
+  };
+
+  const handleYearChange = (e) => {
+    setYear(e.target.value);
+    setBranch('');
+    setSemester('');
+    setSection('');
+  };
+
+  const handleBranchChange = (e) => {
+    setBranch(e.target.value);
+    setSemester('');
+    setSection('');
+  };
+
+  const handleSemesterChange = (e) => {
+    setSemester(e.target.value);
+    setSection('');
+  };
+
+  // Reset semester when year changes
+  React.useEffect(() => {
+    if (!allowedSemesters.includes(Number(semester))) {
+      setSemester('');
+    }
+  }, [allowedSemesters, semester]);
 
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
@@ -26,9 +106,19 @@ export default function BulkUploadStudents() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!file) return toast.error('Please select a file');
+    if (!session) return toast.error('Please select a session');
+    if (!year) return toast.error('Please select a year');
+    if (!branch) return toast.error('Please select a branch');
+    if (!semester) return toast.error('Please select a semester');
+    if (!section) return toast.error('Please select a section');
 
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('session', session);
+    formData.append('year', year);
+    formData.append('branch', branch);
+    formData.append('semester', semester);
+    formData.append('section', section);
     
     setLoading(true);
     try {
@@ -61,8 +151,90 @@ export default function BulkUploadStudents() {
         {/* Upload Form */}
         <div className="lg:col-span-2">
           <form onSubmit={handleSubmit} className="card space-y-4">
-            <h2 className="font-semibold text-slate-700">Upload File</h2>
+            <h2 className="font-semibold text-slate-700">Upload Students</h2>
 
+            {/* Session Selection */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Session *</label>
+              <select
+                value={session}
+                onChange={handleSessionChange}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500"
+              >
+                <option value="">Select Session</option>
+                {SESSIONS.map((s) => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Year Selection */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Year *</label>
+                <select
+                  value={year}
+                  onChange={handleYearChange}
+                  disabled={!session}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select Year</option>
+                  {YEARS.map((y) => (
+                    <option key={y} value={y}>{getYearLabel(y)}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Branch Selection */}
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Branch *</label>
+                <select
+                  value={branch}
+                  onChange={handleBranchChange}
+                  disabled={!year}
+                  className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+                >
+                  <option value="">Select Branch</option>
+                  {BRANCHES.map((item) => (
+                    <option key={item} value={item}>{item}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Semester Selection */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Semester *</label>
+              <select
+                value={semester}
+                onChange={handleSemesterChange}
+                disabled={!branch}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              >
+                <option value="">Select Semester</option>
+                {allowedSemesters.map((s) => (
+                  <option key={s} value={s}>{getSemesterLabel(s)}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Section Selection */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Section *</label>
+              <select
+                value={section}
+                onChange={(e) => setSection(e.target.value)}
+                disabled={!semester}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              >
+                <option value="">Select Section</option>
+                {SECTIONS.map((sec) => (
+                  <option key={sec} value={sec}>Section {sec}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* File Upload */}
             <div className="border-2 border-dashed border-slate-200 rounded-lg p-6 hover:border-slate-300 transition-colors">
               <div className="flex flex-col items-center justify-center text-center">
                 <Upload className="w-8 h-8 text-slate-400 mb-2" />
@@ -85,7 +257,7 @@ export default function BulkUploadStudents() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={loading || !file}
+                disabled={loading || !file || !session || !year || !branch || !semester || !section}
                 className="flex-1 btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Uploading...' : 'Upload Students'}
@@ -104,8 +276,9 @@ export default function BulkUploadStudents() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
               <p className="font-medium mb-1">Excel Format Required:</p>
               <ul className="space-y-1 text-xs">
-                <li>• Columns: rollNo, fullName, email, branch, semester</li>
-                <li>• All fields are required</li>
+                <li>• Columns: rollNo, fullName, email</li>
+                <li>• Session, Year, Branch, Semester, Section are selected above</li>
+                <li>• If branch exists in Excel, it must match the selected branch</li>
                 <li>• Email must be unique across all students</li>
                 <li>• rollNo must be unique</li>
               </ul>

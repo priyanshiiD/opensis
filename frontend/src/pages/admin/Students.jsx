@@ -4,7 +4,28 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { Search, ChevronLeft, ChevronRight, Pencil, Trash2, X, Download } from 'lucide-react';
 
-const ADMISSION_YEARS = Array.from({ length: 4 }, (_, index) => new Date().getFullYear() - index);
+const SESSION_OPTIONS = Array.from({ length: 4 }, (_, index) => {
+  const startYear = new Date().getFullYear() - index;
+  return `${startYear}-${startYear + 1}`;
+});
+
+const BRANCH_OPTIONS = ['CSE', 'IT', 'ECE', 'IP', 'BM', 'CIVIL', 'MC', 'ME', 'CE'];
+const SEMESTER_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8];
+const SECTION_OPTIONS = ['A', 'B', 'C', 'D', 'E', 'F'];
+
+const YEAR_OPTIONS = [
+  { value: '1', label: '1st Year' },
+  { value: '2', label: '2nd Year' },
+  { value: '3', label: '3rd Year' },
+  { value: '4', label: '4th Year' },
+];
+
+const YEAR_SEMESTER_MAP = {
+  '1': [1, 2],
+  '2': [3, 4],
+  '3': [5, 6],
+  '4': [7, 8],
+};
 
 function DeleteModal({ name, onConfirm, onCancel, loading }) {
   return (
@@ -34,21 +55,58 @@ export default function AdminStudents() {
   const [page, setPage] = useState(1);
   const [pages, setPages] = useState(1);
   const [search, setSearch] = useState('');
+  const [session, setSession] = useState('');
+  const [year, setYear] = useState('');
   const [branch, setBranch] = useState('');
   const [semester, setSemester] = useState('');
-  const [admissionYear, setAdmissionYear] = useState('');
+  const [section, setSection] = useState('');
   const [loading, setLoading] = useState(true);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  const allowedSemesters = year ? YEAR_SEMESTER_MAP[String(year)] || [] : [];
+
+  const handleSessionChange = (value) => {
+    setSession(value);
+    setPage(1);
+  };
+
+  const handleYearChange = (value) => {
+    setYear(value);
+    setBranch('');
+    setSemester('');
+    setSection('');
+    setPage(1);
+  };
+
+  const handleBranchChange = (value) => {
+    setBranch(value);
+    setSemester('');
+    setSection('');
+    setPage(1);
+  };
+
+  const handleSemesterChange = (value) => {
+    setSemester(value);
+    setSection('');
+    setPage(1);
+  };
+
+  const handleSectionChange = (value) => {
+    setSection(value);
+    setPage(1);
+  };
+
   const load = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ page, limit: 15 });
+      if (session) params.set('session', session);
+      if (year) params.set('year', year);
       if (branch) params.set('branch', branch);
       if (semester) params.set('semester', semester);
-      if (admissionYear) params.set('admissionYear', admissionYear);
+      if (section) params.set('section', section);
       const { data } = await api.get(`/admin/students?${params}`);
       setStudents(data.data.students);
       setTotal(data.data.total);
@@ -58,7 +116,7 @@ export default function AdminStudents() {
     }
   };
 
-  useEffect(() => { load(); }, [page, branch, semester, admissionYear]);
+  useEffect(() => { load(); }, [page, session, year, branch, semester, section]);
 
   const filtered = search
     ? students.filter(s => `${s.firstName} ${s.lastName} ${s.enrollmentNo} ${s.email || ''}`.toLowerCase().includes(search.toLowerCase()))
@@ -82,9 +140,11 @@ export default function AdminStudents() {
     setExporting(true);
     try {
       const params = new URLSearchParams();
+      if (session) params.set('session', session);
+      if (year) params.set('year', year);
       if (branch) params.set('branch', branch);
       if (semester) params.set('semester', semester);
-      if (admissionYear) params.set('admissionYear', admissionYear);
+      if (section) params.set('section', section);
       
       const response = await api.get(`/admin/students/export?${params}`, {
         responseType: 'blob'
@@ -132,17 +192,27 @@ export default function AdminStudents() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input className="input pl-9" placeholder="Search name, enrollment no. or email" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <select className="input w-auto" value={branch} onChange={e => { setBranch(e.target.value); setPage(1); }}>
+          <select className="input w-auto" value={session} onChange={e => handleSessionChange(e.target.value)}>
+            <option value="">All Sessions</option>
+            {SESSION_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+          <select className="input w-auto" value={year} onChange={e => handleYearChange(e.target.value)}>
+            <option value="">All Years</option>
+            {YEAR_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+          <select className="input w-auto" value={branch} onChange={e => handleBranchChange(e.target.value)} disabled={!year}>
             <option value="">All Branches</option>
-            <option>IT</option><option>CSE</option><option>ECE</option><option>ME</option><option>CE</option>
+            {BRANCH_OPTIONS.map(item => <option key={item} value={item}>{item}</option>)}
           </select>
-          <select className="input w-auto" value={semester} onChange={e => { setSemester(e.target.value); setPage(1); }}>
+          <select className="input w-auto" value={semester} onChange={e => handleSemesterChange(e.target.value)} disabled={!year}>
             <option value="">All Semesters</option>
-            {[1,2,3,4,5,6,7,8].map(s => <option key={s}>{s}</option>)}
+            {allowedSemesters.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <select className="input w-auto" value={admissionYear} onChange={e => { setAdmissionYear(e.target.value); setPage(1); }}>
-            <option value="">All Admission Years</option>
-            {ADMISSION_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+          <select className="input w-auto" value={section} onChange={e => handleSectionChange(e.target.value)} disabled={!year}>
+            <option value="">All Sections</option>
+            {SECTION_OPTIONS.map(item => <option key={item} value={item}>{item}</option>)}
           </select>
           <button 
             onClick={handleExportExcel} 

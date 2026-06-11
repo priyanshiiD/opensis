@@ -6,13 +6,20 @@ import { ArrowLeft, AlertCircle } from 'lucide-react';
 
 const BRANCHES = ['IT', 'CSE', 'ECE', 'ME', 'CE'];
 const SEMESTERS = [1,2,3,4,5,6,7,8];
+const YEAR_OPTIONS = [
+  { value: 1, label: '1st Year' },
+  { value: 2, label: '2nd Year' },
+  { value: 3, label: '3rd Year' },
+  { value: 4, label: '4th Year' },
+];
+const DEFAULT_SESSION = `${new Date().getFullYear()}-${new Date().getFullYear() + 1}`;
 
 export default function EnrollStudent() {
   const navigate = useNavigate();
   const [form, setForm] = useState({
     email: '', password: '', enrollmentNo: '', firstName: '', lastName: '',
-    branch: 'IT', currentSemester: 1, section: 'A', admissionYear: new Date().getFullYear(),
-    session: '2024-25', gender: 'female', phone: '', fatherName: '', motherName: '', address: '', dob: '',
+    branch: 'IT', currentSemester: 1, section: 'A', year: 1,
+    session: DEFAULT_SESSION, gender: 'female', phone: '', fatherName: '', motherName: '', address: '', dob: '',
   });
   const [loading, setLoading] = useState(false);
   const [emailError, setEmailError] = useState('');
@@ -118,8 +125,12 @@ export default function EnrollStudent() {
               </select>
             </div>
             <div><label className="label">Section</label><input className="input" value={form.section} onChange={e => set('section', e.target.value)} /></div>
-            <div><label className="label">Admission Year</label><input className="input" type="number" value={form.admissionYear} onChange={e => set('admissionYear', Number(e.target.value))} /></div>
-            <div><label className="label">Session</label><input className="input" value={form.session} onChange={e => set('session', e.target.value)} placeholder="2024-25" /></div>
+            <div><label className="label">Year</label>
+              <select className="input" value={form.year} onChange={e => set('year', Number(e.target.value))}>
+                {YEAR_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </div>
+            <div><label className="label">Session</label><input className="input" value={form.session} onChange={e => set('session', e.target.value)} placeholder="2026-2027" /></div>
           </div>
         </div>
 
