@@ -619,6 +619,55 @@ const createMonthlyAttendanceWorkbook = async (summary) => {
   return workbook;
 };
 
+const createDetainedAttendanceWorkbook = async (summary) => {
+  const { subject, monthBounds, monthDates, rows } = summary;
+  const workbook = new ExcelJS.Workbook();
+  const ws = workbook.addWorksheet(`Detention_${subject.code}_${monthBounds.year}`);
+
+  const totalColumns = 2 + monthDates.length + 4;
+
+  ws.columns = [
+    { header: 'enrollmentNo', key: 'enrollmentNo', width: 18 },
+    { header: 'studentName', key: 'studentName', width: 26 },
+    ...monthDates.map(({ label }, index) => ({ header: label, key: `d${index + 1}`, width: 12 })),
+    { header: 'presentDays', key: 'presentDays', width: 14 },
+    { header: 'absentDays', key: 'absentDays', width: 14 },
+    { header: 'markedDays', key: 'markedDays', width: 14 },
+    { header: 'attendancePercentage', key: 'attendancePercentage', width: 18 },
+  ];
+
+  ws.getRow(1).font = { bold: true };
+  ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } }; // Soft red header for detention
+  ws.views = [{ state: 'frozen', ySplit: 1 }];
+
+  const detainedRows = rows.filter(row => row.attendancePercentage < 60);
+
+  detainedRows.forEach((row) => {
+    const values = {
+      enrollmentNo: row.enrollmentNo,
+      studentName: row.studentName,
+      presentDays: row.presentDays,
+      absentDays: row.absentDays,
+      markedDays: row.markedDays,
+      attendancePercentage: `${row.attendancePercentage.toFixed(2)}%`,
+    };
+    monthDates.forEach(({ day }, idx) => {
+      values[`d${day}`] = row.statuses[idx] || '';
+    });
+    const excelRow = ws.addRow(values);
+    excelRow.eachCell((cell) => {
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFDE8E8' } }; // Light red highlight
+    });
+    excelRow.getCell(totalColumns).font = {
+      bold: true,
+      color: { argb: 'FF9C0006' },
+    };
+  });
+
+  return workbook;
+};
+
+
 exports.getMonthlyAttendanceSummary = async (req, res) => {
   try {
     const { subjectId, month } = req.query;
@@ -665,7 +714,7 @@ exports.downloadMonthlyAttendanceReport = async (req, res) => {
 
 exports.publishMonthlyAttendanceNotice = async (req, res) => {
   try {
-    const { subjectId, month } = req.body;
+    const { subjectId, month, type } = req.body;
     if (!subjectId || !month) {
       return res.status(400).json({ success: false, message: 'subjectId and month are required' });
     }
@@ -674,33 +723,63 @@ exports.publishMonthlyAttendanceNotice = async (req, res) => {
     if (!faculty) return res.status(404).json({ success: false, message: 'Faculty profile not found' });
 
     const summary = await buildMonthlyAttendanceSummary({ faculty, subjectId, month });
-    const workbook = await createMonthlyAttendanceWorkbook(summary);
-    const filename = `Attendance_${summary.subject.code}_${month}.xlsx`;
-    const { publicPath } = await saveAttendanceWorkbook(workbook, filename);
+    
+    let noticeTitle = '';
+    let noticeBody = '';
+    let attachments = [];
 
-    const detainedStudents = summary.rows.filter(row => row.attendancePercentage < 60);
+    if (type === 'detention') {
+      const detainedStudents = summary.rows.filter(row => row.attendancePercentage < 60);
+      if (detainedStudents.length === 0) {
+        return res.status(400).json({ success: false, message: 'No students have attendance below 60% for this month. No detention notice required.' });
+      }
 
-    const detainedNotices = [];
-    for (const student of detainedStudents) {
-      const detainedNotice = await Notice.create({
-        title: `⚠️ Detained Notice - ${summary.subject.code} - ${month}`,
-        body: [
-          `📋 Detention Notice for ${student.studentName} (${student.enrollmentNo})`,
-          `Subject: ${summary.subject.code} (${summary.subject.name})`,
-          `Month: ${month}`,
-          '',
-          `Your attendance is below 60% (${student.attendancePercentage.toFixed(2)}%).`,
-          'You have been detained and will NOT be allowed to appear in the exam.',
-        ].join('\n'),
-        audience: 'students',
-        targetStudentIds: [student.studentId],
-        attachments: [publicPath],
-        isPinned: false,
-      });
-      detainedNotices.push(detainedNotice);
+      // Generate the detention-only sheet (contains only detained students)
+      const detentionWorkbook = await createDetainedAttendanceWorkbook(summary);
+      const detentionFilename = `DetentionList_${summary.subject.code}_${month}.xlsx`;
+      const savedDetentionSheet = await saveAttendanceWorkbook(detentionWorkbook, detentionFilename);
+      attachments = [savedDetentionSheet.publicPath];
+
+      noticeTitle = `⚠️ Detention List: ${summary.subject.code} — ${month}`;
+      noticeBody = [
+        `📋 DETENTION NOTICE — ${summary.subject.code} (${summary.subject.name})`,
+        `Month: ${month}`,
+        '------------------------------------------------------------------',
+        'The detention list of students whose overall attendance has fallen below the required 60% threshold has been published.',
+        '',
+        'Please refer to the attached Excel sheet to view the list of detained students and their detailed day-wise attendance log.',
+        '',
+        'Note: Detained students are NOT eligible to appear in the end-semester examinations for this subject.',
+      ].join('\n');
+    } else {
+      // type === 'attendance'
+      const overallWorkbook = await createMonthlyAttendanceWorkbook(summary);
+      const overallFilename = `Attendance_${summary.subject.code}_${month}.xlsx`;
+      const savedOverallSheet = await saveAttendanceWorkbook(overallWorkbook, overallFilename);
+      attachments = [savedOverallSheet.publicPath];
+
+      noticeTitle = `📢 Monthly Attendance Record: ${summary.subject.code} — ${month}`;
+      noticeBody = [
+        `📋 ATTENDANCE STATUS — ${summary.subject.code} (${summary.subject.name})`,
+        `Month: ${month}`,
+        '------------------------------------------------------------------',
+        'The overall monthly attendance record has been published.',
+        '',
+        'Please refer to the attached Excel sheet to view the complete monthly attendance report of all students in the class.',
+      ].join('\n');
     }
 
-    res.status(201).json({ success: true, data: { detainedNotices, detainedCount: detainedStudents.length, fileUrl: publicPath } });
+    // Create a single class notice visible to all students
+    const notice = await Notice.create({
+      title: noticeTitle,
+      body: noticeBody,
+      audience: 'students',
+      targetStudentIds: [], // Empty array = public to all students
+      attachments,
+      isPinned: type === 'detention', // Pin detention notices
+    });
+
+    res.status(201).json({ success: true, data: { notice, fileUrl: attachments[0] } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }

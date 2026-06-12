@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../../api/axios';
-import { CalendarDays, Check, Download, FileSpreadsheet, Save, Send, Upload, Users, X } from 'lucide-react';
+import { CalendarDays, Check, Download, FileSpreadsheet, Save, Send, Upload, Users, X, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function FacultyAttendance() {
@@ -154,17 +154,18 @@ export default function FacultyAttendance() {
     setLoadingMonthly(false);
   };
 
-  const publishMonthlyNotice = async () => {
+  const publishMonthlyNotice = async (type) => {
     if (!selectedSubject || !month) return toast.error('Select subject and month');
     setPublishing(true);
     try {
-      const { data } = await api.post('/faculty/attendance/monthly-notice', {
+      await api.post('/faculty/attendance/monthly-notice', {
         subjectId: selectedSubject,
         month,
+        type,
       });
-      toast.success('Monthly attendance notice sent to students');
+      toast.success(type === 'detention' ? 'Detention list notice sent to students' : 'Overall monthly attendance notice sent to students');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to send attendance notice');
+      toast.error(err.response?.data?.message || 'Failed to send notice');
     } finally {
       setPublishing(false);
     }
@@ -306,8 +307,11 @@ export default function FacultyAttendance() {
               <button onClick={downloadMonthlyExport} disabled={loadingMonthly || !monthlySummary} className="btn-secondary text-sm flex items-center gap-2 disabled:opacity-50">
                 <Download className="w-4 h-4" /> {loadingMonthly ? 'Exporting...' : 'Download Month Sheet'}
               </button>
-              <button onClick={publishMonthlyNotice} disabled={publishing || !monthlySummary} className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50">
-                <Send className="w-4 h-4" /> {publishing ? 'Sending...' : 'Send as Notice'}
+              <button onClick={() => publishMonthlyNotice('attendance')} disabled={publishing || !monthlySummary} className="btn-secondary text-sm flex items-center gap-2 disabled:opacity-50 bg-white border border-slate-200">
+                <Send className="w-4 h-4 text-primary-600" /> {publishing ? 'Publishing...' : 'Publish Attendance'}
+              </button>
+              <button onClick={() => publishMonthlyNotice('detention')} disabled={publishing || !monthlySummary} className="btn-primary text-sm flex items-center gap-2 disabled:opacity-50 bg-red-600 hover:bg-red-700 border-red-600 hover:border-red-700 shadow-sm">
+                <AlertTriangle className="w-4 h-4" /> {publishing ? 'Publishing...' : 'Publish Detention List'}
               </button>
             </div>
           </div>
