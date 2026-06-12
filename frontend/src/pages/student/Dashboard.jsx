@@ -45,8 +45,14 @@ export default function StudentDashboard() {
     return isNew;
   }).slice(0, 3);
 
+  const getAttendanceColor = (pct) => {
+    if (pct >= 75) return 'bg-green-500';
+    if (pct >= 60) return 'bg-amber-500';
+    return 'bg-red-500';
+  };
+
   const stats = [
-    { label: 'Attendance', value: `${attendancePct}%`, icon: CalendarCheck, color: attendancePct >= 75 ? 'bg-green-500' : 'bg-red-500', link: '/student/attendance' },
+    { label: 'Attendance', value: `${attendancePct}%`, icon: CalendarCheck, color: totalClasses ? getAttendanceColor(attendancePct) : 'bg-slate-500', link: '/student/attendance' },
     { label: 'Pending Assignments', value: pendingAssignments, icon: BookOpen, color: 'bg-amber-500', link: '/student/assignments' },
     { label: 'Unpaid Fees', value: unpaidFees, icon: CreditCard, color: 'bg-rose-500', link: '/student/fees' },
     { label: 'Notices', value: notices.length, icon: Bell, color: 'bg-indigo-500', link: '/student/notices' },
@@ -62,6 +68,37 @@ export default function StudentDashboard() {
           {user?.profile?.branch} · Semester {user?.profile?.currentSemester} · Section {user?.profile?.section}
         </p>
       </div>
+
+      {/* Attendance Warning/Detention Banners */}
+      {totalClasses > 0 && attendancePct < 60 && (
+        <div className="p-4 rounded-lg mb-6 border border-red-200 bg-red-50 text-red-800 flex items-start gap-3 shadow-sm">
+          <AlertCircle className="w-5.5 h-5.5 text-red-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <h4 className="font-semibold text-red-950 text-sm">Attendance Detention Alert</h4>
+            <p className="text-xs mt-0.5 font-medium">
+              Your overall attendance is <span className="font-bold text-red-700">{attendancePct}%</span>, which is below the required 60% threshold. You have been detained and will not be allowed to appear in exams.
+            </p>
+            <Link to="/student/attendance" className="text-xs font-semibold text-red-950 underline mt-1.5 inline-block hover:text-red-900">
+              View Attendance Breakdown →
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {totalClasses > 0 && attendancePct >= 60 && attendancePct < 75 && (
+        <div className="p-4 rounded-lg mb-6 border border-amber-200 bg-amber-50 text-amber-800 flex items-start gap-3 shadow-sm">
+          <AlertTriangle className="w-5.5 h-5.5 text-amber-500 flex-shrink-0 mt-0.5" />
+          <div>
+            <h4 className="font-semibold text-amber-950 text-sm">Attendance Warning</h4>
+            <p className="text-xs mt-0.5 font-medium">
+              Your overall attendance is <span className="font-bold text-amber-700">{attendancePct}%</span>, which is below the 75% requirement. Please maintain your attendance to avoid detention.
+            </p>
+            <Link to="/student/attendance" className="text-xs font-semibold text-amber-950 underline mt-1.5 inline-block hover:text-amber-900">
+              View Attendance Breakdown →
+            </Link>
+          </div>
+        </div>
+      )}
 
       {/* Resubmission Alert Banner */}
       {resubmitCount > 0 && (

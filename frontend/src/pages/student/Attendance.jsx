@@ -34,13 +34,22 @@ export default function StudentAttendance() {
             <p className="text-4xl font-bold text-slate-800 mt-1">{overallPct}%</p>
             <p className="text-xs text-slate-400 mt-1">{totalPresent} / {totalClasses} classes attended</p>
           </div>
-          <div className={`w-16 h-16 rounded-full flex items-center justify-center ${overallPct >= 75 ? 'bg-green-100' : 'bg-red-100'}`}>
-            {overallPct >= 75 ? <TrendingUp className="w-8 h-8 text-green-600" /> : <TrendingDown className="w-8 h-8 text-red-600" />}
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
+            overallPct >= 75 ? 'bg-green-100 text-green-600' : overallPct >= 60 ? 'bg-amber-100 text-amber-600' : 'bg-red-100 text-red-600'
+          }`}>
+            {overallPct >= 75 ? <TrendingUp className="w-8 h-8" /> : <TrendingDown className="w-8 h-8" />}
           </div>
         </div>
-        {overallPct < 75 && (
-          <div className="mt-3 p-3 bg-red-50 rounded-lg">
-            <p className="text-xs text-red-600 font-medium">⚠️ Your attendance is below 75%. You may face detention.</p>
+
+        {totalClasses > 0 && overallPct < 60 && (
+          <div className="mt-3 p-3 bg-red-50 border border-red-200 rounded-lg">
+            <p className="text-xs text-red-600 font-semibold">❌ You are detained due to low attendance ({overallPct}%). You will not be allowed to appear in exams.</p>
+          </div>
+        )}
+
+        {totalClasses > 0 && overallPct >= 60 && overallPct < 75 && (
+          <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg">
+            <p className="text-xs text-amber-700 font-semibold">⚠️ Your attendance is below 75% ({overallPct}%). Please improve and maintain your attendance to avoid detention.</p>
           </div>
         )}
       </div>
@@ -55,6 +64,12 @@ export default function StudentAttendance() {
         <div className="space-y-4">
           {attendance.map(a => {
             const pct = a.total ? Math.round((a.present / a.total) * 100) : 0;
+            const colors = pct >= 75 
+              ? { text: 'text-green-600', bar: 'bg-green-500' }
+              : pct >= 60 
+                ? { text: 'text-amber-600', bar: 'bg-amber-500' }
+                : { text: 'text-red-600', bar: 'bg-red-500' };
+
             return (
               <div key={a.subject?._id} className="card">
                 <div className="flex items-center justify-between mb-3">
@@ -62,11 +77,11 @@ export default function StudentAttendance() {
                     <h3 className="font-semibold text-slate-800">{a.subject?.name}</h3>
                     <p className="text-xs text-slate-500">{a.subject?.code}</p>
                   </div>
-                  <span className={`text-lg font-bold ${pct >= 75 ? 'text-green-600' : 'text-red-600'}`}>{pct}%</span>
+                  <span className={`text-lg font-bold ${colors.text}`}>{pct}%</span>
                 </div>
                 {/* Progress bar */}
                 <div className="w-full bg-slate-100 rounded-full h-2.5 mb-2">
-                  <div className={`h-2.5 rounded-full transition-all ${pct >= 75 ? 'bg-green-500' : 'bg-red-500'}`} style={{ width: `${pct}%` }} />
+                  <div className={`h-2.5 rounded-full transition-all ${colors.bar}`} style={{ width: `${pct}%` }} />
                 </div>
                 <div className="flex justify-between text-xs text-slate-400">
                   <span>Present: {a.present}</span>
