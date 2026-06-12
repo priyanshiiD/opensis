@@ -331,10 +331,11 @@ export default function FacultyAttendance() {
                     <tr className="border-b border-slate-200 text-slate-500">
                       <th className="text-left py-3 px-2 sticky left-0 bg-white">Enrollment No</th>
                       <th className="text-left py-3 px-2 sticky left-32 bg-white">Student</th>
-                      {monthlySummary.days.map(day => <th key={day} className="text-center py-3 px-2">{day}</th>)}
+                      {(monthlySummary.dayLabels || monthlySummary.days).map((day, idx) => <th key={`${day}-${idx}`} className="text-center py-3 px-2">{day}</th>)}
                       <th className="text-center py-3 px-2">P</th>
                       <th className="text-center py-3 px-2">A</th>
                       <th className="text-center py-3 px-2">Marked</th>
+                      <th className="text-center py-3 px-2">%</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -348,6 +349,9 @@ export default function FacultyAttendance() {
                         <td className="py-2 px-2 text-center text-green-700">{student.presentDays}</td>
                         <td className="py-2 px-2 text-center text-red-700">{student.absentDays}</td>
                         <td className="py-2 px-2 text-center text-slate-500">{student.markedDays}</td>
+                        <td className={`py-2 px-2 text-center font-semibold ${student.attendancePercentage < 60 ? 'text-red-700' : student.attendancePercentage < 75 ? 'text-amber-700' : 'text-emerald-700'}`}>
+                          {Number(student.attendancePercentage || 0).toFixed(2)}%
+                        </td>
                       </tr>
                     ))}
                   </tbody>
