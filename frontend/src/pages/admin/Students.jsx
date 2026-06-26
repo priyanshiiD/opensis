@@ -60,7 +60,8 @@ export default function AdminStudents() {
   const [branch, setBranch] = useState('');
   const [semester, setSemester] = useState('');
   const [section, setSection] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [filterApplied, setFilterApplied] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -99,6 +100,7 @@ export default function AdminStudents() {
   };
 
   const load = async () => {
+    if (!session && !year && !branch && !semester && !section) return;
     setLoading(true);
     try {
       const params = new URLSearchParams({ page, limit: 15 });
@@ -116,7 +118,17 @@ export default function AdminStudents() {
     }
   };
 
-  useEffect(() => { load(); }, [page, session, year, branch, semester, section]);
+  useEffect(() => {
+    const hasFilter = session || year || branch || semester || section;
+    if (hasFilter) {
+      setFilterApplied(true);
+      load();
+    } else {
+      setFilterApplied(false);
+      setStudents([]);
+      setTotal(0);
+    }
+  }, [page, session, year, branch, semester, section]);
 
   const filtered = search
     ? students.filter(s => `${s.firstName} ${s.lastName} ${s.enrollmentNo} ${s.email || ''}`.toLowerCase().includes(search.toLowerCase()))
@@ -236,7 +248,15 @@ export default function AdminStudents() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {!filterApplied ? (
+                <tr><td colSpan={7} className="text-center py-14 text-slate-400">
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="text-2xl">🔍</span>
+                    <p className="font-medium text-slate-500">Select a filter above to view students</p>
+                    <p className="text-xs text-slate-400">Choose a session, year, branch, semester, or section</p>
+                  </div>
+                </td></tr>
+              ) : loading ? (
                 [...Array(5)].map((_, i) => (
                   <tr key={i} className="border-b border-slate-100">
                     {[...Array(7)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>)}
