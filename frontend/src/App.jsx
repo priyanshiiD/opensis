@@ -8,8 +8,8 @@ import Layout from "./components/Layout";
 // Icons for nav
 import {
   LayoutDashboard, Users, UserCheck, BookOpen, Bell, Calendar,
-  Clock, GraduationCap, User, ClipboardList, FileText, CreditCard,
-  Library, MessageSquare, BarChart3, CalendarDays, Zap
+  Clock, GraduationCap, User, ClipboardList, FileText,
+  MessageSquare, BarChart3, CalendarDays, Zap
 } from "lucide-react";
 
 // Common pages
@@ -80,8 +80,6 @@ const studentNav = [
   { path: "/student/assignments", label: "Assignments", icon: FileText },
   { path: "/student/classes", label: "Classes", icon: CalendarDays },
   { path: "/student/exam", label: "Exams & Results", icon: BarChart3 },
-  { path: "/student/fees", label: "Fees", icon: CreditCard },
-  { path: "/student/library", label: "Library", icon: Library },
   { path: "/student/feedback", label: "Feedback", icon: MessageSquare },
   { path: "/student/notices", label: "Notices", icon: Bell },
 ];

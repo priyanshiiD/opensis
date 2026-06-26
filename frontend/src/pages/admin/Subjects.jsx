@@ -6,7 +6,7 @@ import { Plus, Pencil, Trash2, Check, X } from 'lucide-react';
 const BRANCHES = ['IT', 'CSE', 'ECE', 'ME', 'CE'];
 const SEMESTERS = [1, 2, 3, 4, 5, 6, 7, 8];
 
-const EMPTY_FORM = { code: '', name: '', branch: 'IT', semester: 1, credits: 3, facultyId: '' };
+const EMPTY_FORM = { code: '', name: '', branch: 'IT', semester: 1, credits: 3 };
 
 export default function AdminSubjects() {
   const [subjects, setSubjects] = useState([]);
@@ -149,15 +149,6 @@ export default function AdminSubjects() {
             <div>
               <label className="label">Credits</label>
               <input className="input" type="number" min={1} max={6} value={form.credits} onChange={e => set('credits', Number(e.target.value))} />
-            </div>
-            <div className="sm:col-span-3">
-              <label className="label">Assign Faculty</label>
-              <select className="input" value={form.facultyId} onChange={e => set('facultyId', e.target.value)}>
-                <option value="">— Unassigned —</option>
-                {allFaculty.map(f => (
-                  <option key={f._id} value={f._id}>{f.firstName} {f.lastName} · {f.department}</option>
-                ))}
-              </select>
             </div>
             <div className="sm:col-span-3 flex gap-3">
               <button type="submit" disabled={saving} className="btn-primary">{saving ? 'Creating...' : 'Create Subject'}</button>
