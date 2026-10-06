@@ -27,6 +27,12 @@ router.get('/subjects', authorize('admin'), ctrl.getSubjects);
 router.patch('/subjects/:id', authorize('admin'), ctrl.updateSubject);
 router.delete('/subjects/:id', authorize('admin'), ctrl.deleteSubject);
 
+router.post('/labs', authorize('admin'), ctrl.createLab);
+router.get('/labs', authorize('admin'), ctrl.getLabs);
+router.get('/labs/:id/students', authorize('admin'), ctrl.getLabStudents);
+router.patch('/labs/:id', authorize('admin'), ctrl.updateLab);
+router.delete('/labs/:id', authorize('admin'), ctrl.deleteLab);
+
 router.post('/notices', authorize('admin'), ctrl.createNotice);
 router.get('/notices', authorize('admin'), ctrl.getNotices);
 router.delete('/notices/:id', authorize('admin'), ctrl.deleteNotice);
