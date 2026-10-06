@@ -12,11 +12,16 @@ const YEAR_SEMESTER_MAP = {
   '4': [7, 8],      // 4th Year: Semesters 7, 8
 };
 
-// Generate session options (current year and 4 years back)
+const SEMESTER_SESSION_MAP = {
+  'july-december': [1, 3, 5, 7],
+  'january-june': [2, 4, 6, 8],
+};
+
+// Generate session options for the four-year B.Tech duration
 const generateSessionOptions = () => {
   const sessions = [];
   const currentYear = new Date().getFullYear();
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 4; i++) {
     const year = currentYear - i;
     sessions.push(`${year}-${year + 1}`);
   }
@@ -25,8 +30,13 @@ const generateSessionOptions = () => {
 
 const SESSIONS = generateSessionOptions();
 const YEARS = ['1', '2', '3', '4'];
+const SEMESTER_SESSIONS = [
+  { value: 'july-december', label: 'July-December' },
+  { value: 'january-june', label: 'January-June' },
+];
 const BRANCHES = ['CSE', 'IT', 'ECE', 'IP', 'BM', 'CIVIL', 'MC'];
-const SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F'];
+const FIRST_YEAR_SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
+const OTHER_YEAR_SECTIONS = ['A', 'B'];
 
 const getYearLabel = (value) => {
   if (value === '1') return '1st Year';
@@ -46,6 +56,7 @@ export default function BulkUploadStudents() {
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
   const [session, setSession] = useState('');
+  const [semesterSession, setSemesterSession] = useState('');
   const [year, setYear] = useState('');
   const [branch, setBranch] = useState('');
   const [semester, setSemester] = useState('');
@@ -53,11 +64,24 @@ export default function BulkUploadStudents() {
 
   // Calculate allowed semesters based on selected year
   const allowedSemesters = useMemo(() => {
-    return year ? YEAR_SEMESTER_MAP[year] || [] : [];
-  }, [year]);
+    const yearSemesters = year ? YEAR_SEMESTER_MAP[year] || [] : [];
+    const sessionSemesters = semesterSession ? SEMESTER_SESSION_MAP[semesterSession] || [] : [];
+    return yearSemesters.filter((value) => sessionSemesters.includes(value));
+  }, [semesterSession, year]);
+
+  const allowedSections = year === '1' ? FIRST_YEAR_SECTIONS : OTHER_YEAR_SECTIONS;
 
   const handleSessionChange = (e) => {
     setSession(e.target.value);
+    setSemesterSession('');
+    setYear('');
+    setBranch('');
+    setSemester('');
+    setSection('');
+  };
+
+  const handleSemesterSessionChange = (e) => {
+    setSemesterSession(e.target.value);
     setYear('');
     setBranch('');
     setSemester('');
@@ -107,6 +131,7 @@ export default function BulkUploadStudents() {
     e.preventDefault();
     if (!file) return toast.error('Please select a file');
     if (!session) return toast.error('Please select a session');
+    if (!semesterSession) return toast.error('Please select a semester session');
     if (!year) return toast.error('Please select a year');
     if (!branch) return toast.error('Please select a branch');
     if (!semester) return toast.error('Please select a semester');
@@ -168,6 +193,22 @@ export default function BulkUploadStudents() {
               </select>
             </div>
 
+            {/* Semester Session Selection */}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Semester Session *</label>
+              <select
+                value={semesterSession}
+                onChange={handleSemesterSessionChange}
+                disabled={!session}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
+              >
+                <option value="">Select Semester Session</option>
+                {SEMESTER_SESSIONS.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+            </div>
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {/* Year Selection */}
               <div>
@@ -175,7 +216,7 @@ export default function BulkUploadStudents() {
                 <select
                   value={year}
                   onChange={handleYearChange}
-                  disabled={!session}
+                  disabled={!semesterSession}
                   className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
                 >
                   <option value="">Select Year</option>
@@ -228,7 +269,7 @@ export default function BulkUploadStudents() {
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:bg-slate-100 disabled:cursor-not-allowed"
               >
                 <option value="">Select Section</option>
-                {SECTIONS.map((sec) => (
+                {allowedSections.map((sec) => (
                   <option key={sec} value={sec}>Section {sec}</option>
                 ))}
               </select>
@@ -257,7 +298,7 @@ export default function BulkUploadStudents() {
             <div className="flex gap-2">
               <button
                 type="submit"
-                disabled={loading || !file || !session || !year || !branch || !semester || !section}
+                disabled={loading || !file || !session || !semesterSession || !year || !branch || !semester || !section}
                 className="flex-1 btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {loading ? 'Uploading...' : 'Upload Students'}
