@@ -65,7 +65,7 @@ const adminNav = [
   { path: "/admin/bulk-upload-students", label: "Bulk Upload Students", icon: GraduationCap },
   { path: "/admin/faculty", label: "Faculty", icon: UserCheck },
   { path: "/admin/bulk-upload-faculty", label: "Bulk Upload Faculty", icon: UserCheck },
-  { path: "/admin/subjects", label: "Subjects", icon: BookOpen },
+  { path: "/admin/subjects", label: "Subjects & Labs", icon: BookOpen },
   { path: "/admin/results", label: "Results", icon: BarChart3 },
   { path: "/admin/notices", label: "Notices", icon: Bell },
   { path: "/admin/exam-schedule", label: "Exam Schedule", icon: Calendar },

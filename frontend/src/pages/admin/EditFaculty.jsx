@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { ArrowLeft, BookOpen } from 'lucide-react';
+import { ArrowLeft, BookOpen, FlaskConical } from 'lucide-react';
 
 const DEPARTMENTS = ['IT', 'CSE', 'ECE', 'ME', 'CE'];
 
@@ -14,8 +14,11 @@ export default function EditFaculty() {
   const [saving, setSaving] = useState(false);
 
   const [subjectIds, setSubjectIds] = useState([]);
+  const [labIds, setLabIds] = useState([]);
   const [availableSubjects, setAvailableSubjects] = useState([]);
+  const [availableLabs, setAvailableLabs] = useState([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
+  const [loadingLabs, setLoadingLabs] = useState(false);
   const isInitialSubjectLoad = useRef(true);
 
   useEffect(() => {
@@ -33,18 +36,27 @@ export default function EditFaculty() {
       });
       const assignedIds = (f.subjectsTaught || []).map(s => (typeof s === 'object' ? s._id : s));
       setSubjectIds(assignedIds);
+      setLabIds((f.labsTaught || []).map(lab => (typeof lab === 'object' ? lab._id : lab)));
     }).finally(() => setLoading(false));
   }, [id]);
 
   // Reload subjects when department changes; clear selection only on explicit dept change (not initial load)
   useEffect(() => {
     if (!form) return;
-    if (!isInitialSubjectLoad.current) setSubjectIds([]);
+    if (!isInitialSubjectLoad.current) {
+      setSubjectIds([]);
+      setLabIds([]);
+    }
     isInitialSubjectLoad.current = false;
     setLoadingSubjects(true);
-    api.get(`/admin/subjects?branch=${form.department}`)
-      .then(r => setAvailableSubjects(r.data.data.subjects))
-      .finally(() => setLoadingSubjects(false));
+    setLoadingLabs(true);
+    Promise.all([
+      api.get(`/admin/subjects?branch=${form.department}`).then(r => setAvailableSubjects(r.data.data.subjects)),
+      api.get(`/admin/labs?branch=${form.department}`).then(r => setAvailableLabs(r.data.data.labs)),
+    ]).finally(() => {
+      setLoadingSubjects(false);
+      setLoadingLabs(false);
+    });
   }, [form?.department]);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -55,11 +67,15 @@ export default function EditFaculty() {
     );
   };
 
+  const toggleLab = (labId) => {
+    setLabIds(prev => prev.includes(labId) ? prev.filter(id => id !== labId) : [...prev, labId]);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api.patch(`/admin/faculty/${id}`, { ...form, subjectIds });
+      await api.patch(`/admin/faculty/${id}`, { ...form, subjectIds, labIds });
       toast.success('Faculty updated successfully!');
       navigate(`/admin/faculty/${id}`);
     } catch (err) {
@@ -158,6 +174,49 @@ export default function EditFaculty() {
                           Currently: {s.facultyId.firstName} {s.facultyId.lastName}
                         </p>
                       )}
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="card">
+          <div className="flex items-center gap-2 mb-1">
+            <FlaskConical className="w-4 h-4 text-emerald-600" />
+            <h2 className="font-semibold text-slate-700">Assigned Labs</h2>
+            {labIds.length > 0 && (
+              <span className="ml-auto text-xs bg-emerald-100 text-emerald-700 font-semibold px-2 py-0.5 rounded-full">
+                {labIds.length} selected
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-slate-400 mb-4">
+            Showing labs from <strong>{form.department}</strong>. Change department above to see others.
+          </p>
+
+          {loadingLabs ? (
+            <div className="space-y-2">
+              {[...Array(3)].map((_, i) => <div key={i} className="h-10 bg-slate-100 rounded-lg animate-pulse" />)}
+            </div>
+          ) : availableLabs.length === 0 ? (
+            <p className="text-sm text-slate-400 italic">No labs found for {form.department}.</p>
+          ) : (
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {availableLabs.map(lab => {
+                const checked = labIds.includes(lab._id);
+                const otherFaculty = lab.facultyId && String(lab.facultyId._id || lab.facultyId) !== id && !checked;
+                return (
+                  <label key={lab._id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all ${checked ? 'border-emerald-400 bg-emerald-50' : 'border-slate-200 hover:border-slate-300 bg-white'}`}>
+                    <input type="checkbox" className="accent-primary-600 w-4 h-4 shrink-0" checked={checked} onChange={() => toggleLab(lab._id)} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-xs font-semibold text-emerald-600">{lab.code}</span>
+                        <span className="text-sm font-medium text-slate-700 truncate">{lab.name}</span>
+                        <span className="text-xs text-slate-400 ml-auto shrink-0">Sem {lab.semester} · {lab.credits} cr.</span>
+                      </div>
+                      {otherFaculty && <p className="text-xs text-amber-600 mt-0.5">Currently: {lab.facultyId.firstName} {lab.facultyId.lastName}</p>}
                     </div>
                   </label>
                 );
