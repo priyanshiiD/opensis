@@ -66,6 +66,11 @@ const YEAR_SEMESTER_MAP = {
   '4': [7, 8],
 };
 
+const SEMESTER_SESSION_MAP = {
+  'july-december': [1, 3, 5, 7],
+  'january-june': [2, 4, 6, 8],
+};
+
 const normalizeStudentYear = (value, currentSemester) => {
   const directYear = Number(value);
   if (Number.isInteger(directYear) && directYear >= 1 && directYear <= 4) {
@@ -144,6 +149,9 @@ exports.getStudents = async (req, res) => {
   try {
     const filter = {};
     if (req.query.branch) filter.branch = req.query.branch;
+    if (req.query.semesterSession && SEMESTER_SESSION_MAP[req.query.semesterSession]) {
+      filter.currentSemester = { $in: SEMESTER_SESSION_MAP[req.query.semesterSession] };
+    }
     if (req.query.semester) filter.currentSemester = Number(req.query.semester);
     if (req.query.session) filter.session = buildSessionRegex(req.query.session);
     const yearFilter = buildYearFilter(req.query.year ?? req.query.admissionYear);
@@ -1148,6 +1156,9 @@ exports.exportStudents = async (req, res) => {
   try {
     const filter = {};
     if (req.query.branch) filter.branch = req.query.branch;
+    if (req.query.semesterSession && SEMESTER_SESSION_MAP[req.query.semesterSession]) {
+      filter.currentSemester = { $in: SEMESTER_SESSION_MAP[req.query.semesterSession] };
+    }
     if (req.query.semester) filter.currentSemester = Number(req.query.semester);
     const yearFilter = buildYearFilter(req.query.year ?? req.query.admissionYear);
     if (yearFilter) Object.assign(filter, yearFilter);
