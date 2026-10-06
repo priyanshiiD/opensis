@@ -640,7 +640,7 @@ const createDetainedAttendanceWorkbook = async (summary) => {
   ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } }; // Soft red header for detention
   ws.views = [{ state: 'frozen', ySplit: 1 }];
 
-  const detainedRows = rows.filter(row => row.attendancePercentage < 60);
+  const detainedRows = rows.filter(row => row.attendancePercentage < 75);
 
   detainedRows.forEach((row) => {
     const values = {
@@ -712,6 +712,26 @@ exports.downloadMonthlyAttendanceReport = async (req, res) => {
   }
 };
 
+exports.downloadDetentionAttendanceReport = async (req, res) => {
+  try {
+    const { subjectId, month } = req.query;
+    if (!subjectId || !month) {
+      return res.status(400).json({ success: false, message: 'subjectId and month are required' });
+    }
+    const faculty = await Faculty.findOne({ userId: req.user._id }).lean();
+    if (!faculty) return res.status(404).json({ success: false, message: 'Faculty profile not found' });
+    const summary = await buildMonthlyAttendanceSummary({ faculty, subjectId, month });
+    const workbook = await createDetainedAttendanceWorkbook(summary);
+    const filename = `DetentionList_${summary.subject.code}_${month}.xlsx`;
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 exports.publishMonthlyAttendanceNotice = async (req, res) => {
   try {
     const { subjectId, month, type } = req.body;
@@ -729,9 +749,9 @@ exports.publishMonthlyAttendanceNotice = async (req, res) => {
     let attachments = [];
 
     if (type === 'detention') {
-      const detainedStudents = summary.rows.filter(row => row.attendancePercentage < 60);
+      const detainedStudents = summary.rows.filter(row => row.attendancePercentage < 75);
       if (detainedStudents.length === 0) {
-        return res.status(400).json({ success: false, message: 'No students have attendance below 60% for this month. No detention notice required.' });
+        return res.status(400).json({ success: false, message: 'No students have attendance below 75% for this month. No detention notice required.' });
       }
 
       // Generate the detention-only sheet (contains only detained students)
@@ -745,7 +765,7 @@ exports.publishMonthlyAttendanceNotice = async (req, res) => {
         `📋 DETENTION NOTICE — ${summary.subject.code} (${summary.subject.name})`,
         `Month: ${month}`,
         '------------------------------------------------------------------',
-        'The detention list of students whose overall attendance has fallen below the required 60% threshold has been published.',
+        'The detention list of students whose overall attendance has fallen below the required 75% threshold has been published.',
         '',
         'Please refer to the attached Excel sheet to view the list of detained students and their detailed day-wise attendance log.',
         '',
