@@ -18,6 +18,7 @@ router.get('/attendance/template', ctrl.downloadAttendanceTemplate);
 router.post('/attendance/bulk-upload', excelUpload.single('file'), ctrl.bulkUploadAttendance);
 router.get('/attendance/monthly-summary', ctrl.getMonthlyAttendanceSummary);
 router.get('/attendance/monthly-export', ctrl.downloadMonthlyAttendanceReport);
+router.get('/attendance/detention-export', ctrl.downloadDetentionAttendanceReport);
 router.post('/attendance/monthly-notice', ctrl.publishMonthlyAttendanceNotice);
 router.post('/assignments', upload.single('file'), ctrl.createAssignment);
 router.get('/assignments', ctrl.getAssignments);

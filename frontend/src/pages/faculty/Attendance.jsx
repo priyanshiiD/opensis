@@ -16,6 +16,7 @@ export default function FacultyAttendance() {
   const [loadingSheet, setLoadingSheet] = useState(false);
   const [monthlySummary, setMonthlySummary] = useState(null);
   const [loadingMonthly, setLoadingMonthly] = useState(false);
+  const [loadingDetention, setLoadingDetention] = useState(false);
   const [publishing, setPublishing] = useState(false);
 
   useEffect(() => {
@@ -152,6 +153,29 @@ export default function FacultyAttendance() {
       toast.error(err.response?.data?.message || 'Failed to export monthly attendance');
     }
     setLoadingMonthly(false);
+  };
+
+  const downloadDetentionExport = async () => {
+    if (!selectedSubject || !month) return toast.error('Select subject and month');
+    setLoadingDetention(true);
+    try {
+      const q = `?subjectId=${selectedSubject}&month=${encodeURIComponent(month)}`;
+      const resp = await api.get(`/faculty/attendance/detention-export${q}`, { responseType: 'blob' });
+      const disposition = resp.headers['content-disposition'] || '';
+      const match = /filename\*?=([^;]+)/i.exec(disposition);
+      const filename = match ? match[1].replace(/UTF-8''/, '').replace(/"/g, '').trim() : `detention_list_${month}.xlsx`;
+      const url = window.URL.createObjectURL(new Blob([resp.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to export detention list');
+    }
+    setLoadingDetention(false);
   };
 
   const publishMonthlyNotice = async (type) => {
@@ -307,6 +331,9 @@ export default function FacultyAttendance() {
               <button onClick={downloadMonthlyExport} disabled={loadingMonthly || !monthlySummary} className="btn-secondary text-sm flex items-center gap-2 disabled:opacity-50">
                 <Download className="w-4 h-4" /> {loadingMonthly ? 'Exporting...' : 'Download Month Sheet'}
               </button>
+              <button onClick={downloadDetentionExport} disabled={loadingDetention || !monthlySummary || !monthlySummary.students.some(student => student.attendancePercentage < 75)} className="btn-secondary text-sm flex items-center gap-2 disabled:opacity-50">
+                <Download className="w-4 h-4" /> {loadingDetention ? 'Exporting...' : 'Download Detention List'}
+              </button>
               <button onClick={() => publishMonthlyNotice('attendance')} disabled={publishing || !monthlySummary} className="btn-secondary text-sm flex items-center gap-2 disabled:opacity-50 bg-white border border-slate-200">
                 <Send className="w-4 h-4 text-primary-600" /> {publishing ? 'Publishing...' : 'Publish Attendance'}
               </button>
@@ -321,6 +348,40 @@ export default function FacultyAttendance() {
               <div className="w-8 h-8 border-4 border-primary-600 border-t-transparent rounded-full animate-spin mx-auto" />
             </div>
           ) : monthlySummary ? (
+            <>
+            <div className="card border-amber-200 bg-amber-50/40">
+              <div className="flex items-center justify-between gap-3 flex-wrap mb-3">
+                <div>
+                  <h3 className="font-semibold text-slate-800">Short Attendance Students</h3>
+                  <p className="text-sm text-slate-500">Students below 75% for {month}. These students are included in the detention export.</p>
+                </div>
+                <span className="text-sm font-semibold text-amber-700">{monthlySummary.students.filter(student => student.attendancePercentage < 75).length} students</span>
+              </div>
+              {monthlySummary.students.some(student => student.attendancePercentage < 75) ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-amber-200 text-slate-500">
+                        <th className="text-left py-2">Enrollment No</th>
+                        <th className="text-left py-2">Student</th>
+                        <th className="text-right py-2">Attendance</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {monthlySummary.students.filter(student => student.attendancePercentage < 75).map(student => (
+                        <tr key={student.studentId} className="border-b border-amber-100 last:border-0">
+                          <td className="py-2 font-mono text-xs">{student.enrollmentNo}</td>
+                          <td className="py-2">{student.studentName}</td>
+                          <td className="py-2 text-right font-semibold text-amber-700">{Number(student.attendancePercentage || 0).toFixed(2)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="text-sm text-emerald-700">No students are below 75% for this month.</p>
+              )}
+            </div>
             <div className="card">
               <div className="flex items-center justify-between mb-4">
                 <div>
@@ -362,6 +423,7 @@ export default function FacultyAttendance() {
                 </table>
               </div>
             </div>
+            </>
           ) : (
             <div className="card text-center py-12">
               <CalendarDays className="w-12 h-12 text-slate-300 mx-auto mb-3" />
