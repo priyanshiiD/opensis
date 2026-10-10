@@ -3,6 +3,7 @@ const User = require('../models/User');
 const Student = require('../models/Student');
 const Faculty = require('../models/Faculty');
 const Subject = require('../models/Subject');
+const Lab = require('../models/Lab');
 const Notice = require('../models/Notice');
 const ExamSchedule = require('../models/ExamSchedule');
 const ClassSchedule = require('../models/ClassSchedule');
@@ -78,6 +79,11 @@ const YEAR_SEMESTER_MAP = {
   '2': [3, 4],
   '3': [5, 6],
   '4': [7, 8],
+};
+
+const SEMESTER_SESSION_MAP = {
+  'july-december': [1, 3, 5, 7],
+  'january-june': [2, 4, 6, 8],
 };
 
 const normalizeStudentYear = (value, currentSemester) => {
@@ -158,6 +164,9 @@ exports.getStudents = async (req, res) => {
   try {
     const filter = {};
     if (req.query.branch) filter.branch = req.query.branch;
+    if (req.query.semesterSession && SEMESTER_SESSION_MAP[req.query.semesterSession]) {
+      filter.currentSemester = { $in: SEMESTER_SESSION_MAP[req.query.semesterSession] };
+    }
     if (req.query.semester) filter.currentSemester = Number(req.query.semester);
     if (req.query.session) filter.session = buildSessionRegex(req.query.session);
     const yearFilter = buildYearFilter(req.query.year ?? req.query.admissionYear);
@@ -267,7 +276,8 @@ exports.getFacultyById = async (req, res) => {
   try {
     const raw = await Faculty.findById(req.params.id).populate('userId', 'email').populate('subjectsTaught').lean();
     if (!raw) return res.status(404).json({ success: false, message: 'Faculty not found' });
-    const faculty = { ...raw, email: raw.userId?.email };
+    const labsTaught = await Lab.find({ facultyId: raw._id }).sort({ code: 1 }).lean();
+    const faculty = { ...raw, email: raw.userId?.email, labsTaught };
     res.json({ success: true, data: { faculty } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
@@ -283,10 +293,15 @@ exports.updateFaculty = async (req, res) => {
     // new: false → get the OLD doc so we can diff subjectsTaught
     const faculty = await Faculty.findByIdAndUpdate(req.params.id, update, { new: false, runValidators: true });
     if (!faculty) return res.status(404).json({ success: false, message: 'Faculty not found' });
+    const effectiveDepartment = update.department || faculty.department;
 
     if (Array.isArray(req.body.subjectIds)) {
       const newIds = req.body.subjectIds.filter(Boolean).map(String);
       const oldIds = faculty.subjectsTaught.map(String);
+      const validSubjects = await Subject.countDocuments({ _id: { $in: newIds }, branch: effectiveDepartment });
+      if (validSubjects !== newIds.length) {
+        return res.status(400).json({ success: false, message: 'All assigned subjects must belong to the faculty department' });
+      }
 
       const toRemove = oldIds.filter(id => !newIds.includes(id));
       const toAdd    = newIds.filter(id => !oldIds.includes(id));
@@ -311,8 +326,25 @@ exports.updateFaculty = async (req, res) => {
       await Faculty.findByIdAndUpdate(faculty._id, { subjectsTaught: newIds });
     }
 
+    if (Array.isArray(req.body.labIds)) {
+      const newLabIds = req.body.labIds.filter(Boolean).map(String);
+      const validLabs = await Lab.countDocuments({ _id: { $in: newLabIds }, branch: effectiveDepartment });
+      if (validLabs !== newLabIds.length) {
+        return res.status(400).json({ success: false, message: 'All assigned labs must belong to the faculty department' });
+      }
+
+      await Lab.updateMany(
+        { facultyId: faculty._id, _id: { $nin: newLabIds } },
+        { $unset: { facultyId: 1 } }
+      );
+      if (newLabIds.length > 0) {
+        await Lab.updateMany({ _id: { $in: newLabIds } }, { $set: { facultyId: faculty._id } });
+      }
+    }
+
     const updated = await Faculty.findById(faculty._id).populate('userId', 'email').populate('subjectsTaught', 'code name').lean();
-    res.json({ success: true, data: { faculty: { ...updated, email: updated.userId?.email } } });
+    const labsTaught = await Lab.find({ facultyId: faculty._id }).sort({ code: 1 }).lean();
+    res.json({ success: true, data: { faculty: { ...updated, email: updated.userId?.email, labsTaught } } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -632,6 +664,101 @@ exports.deleteSubject = async (req, res) => {
       await Faculty.findByIdAndUpdate(subject.facultyId, { $pull: { subjectsTaught: subject._id } });
     }
     res.json({ success: true, message: 'Subject deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const normalizeLabPayload = (payload) => {
+  const semester = Number(payload.semester);
+  return {
+    code: String(payload.code || '').trim().toUpperCase(),
+    name: String(payload.name || '').trim(),
+    branch: String(payload.branch || '').trim().toUpperCase(),
+    semester,
+    year: Math.ceil(semester / 2),
+    credits: Number(payload.credits || 1),
+    facultyId: payload.facultyId || undefined,
+  };
+};
+
+const validateLabFaculty = async (facultyId, branch) => {
+  if (!facultyId) return null;
+  const faculty = await Faculty.findById(facultyId).select('department').lean();
+  if (!faculty) return 'Faculty not found';
+  if (faculty.department && String(faculty.department).toUpperCase() !== branch) {
+    return 'Assigned faculty department must match the lab branch';
+  }
+  return null;
+};
+
+exports.createLab = async (req, res) => {
+  try {
+    const payload = normalizeLabPayload(req.body);
+    if (!payload.code || !payload.name || !payload.branch || !Number.isInteger(payload.semester) || payload.semester < 1 || payload.semester > 8) {
+      return res.status(400).json({ success: false, message: 'Code, name, branch and a valid semester (1-8) are required' });
+    }
+    const facultyError = await validateLabFaculty(payload.facultyId, payload.branch);
+    if (facultyError) return res.status(400).json({ success: false, message: facultyError });
+    const lab = await Lab.create(payload);
+    const populated = await Lab.findById(lab._id).populate('facultyId', 'firstName lastName department').lean();
+    res.status(201).json({ success: true, data: { lab: populated } });
+  } catch (err) {
+    if (err.code === 11000) return res.status(400).json({ success: false, message: 'Lab code already exists' });
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.getLabs = async (req, res) => {
+  try {
+    const filter = {};
+    if (req.query.branch) filter.branch = req.query.branch;
+    if (req.query.semester) filter.semester = Number(req.query.semester);
+    const labs = await Lab.find(filter).populate('facultyId', 'firstName lastName department').sort({ code: 1 }).lean();
+    res.json({ success: true, data: { labs } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.updateLab = async (req, res) => {
+  try {
+    const existing = await Lab.findById(req.params.id).lean();
+    if (!existing) return res.status(404).json({ success: false, message: 'Lab not found' });
+    const payload = normalizeLabPayload({ ...existing, ...req.body });
+    if (!payload.name || !payload.branch || !Number.isInteger(payload.semester) || payload.semester < 1 || payload.semester > 8) {
+      return res.status(400).json({ success: false, message: 'Name, branch and a valid semester (1-8) are required' });
+    }
+    const facultyError = await validateLabFaculty(payload.facultyId, payload.branch);
+    if (facultyError) return res.status(400).json({ success: false, message: facultyError });
+    const lab = await Lab.findByIdAndUpdate(req.params.id, payload, { new: true, runValidators: true })
+      .populate('facultyId', 'firstName lastName department');
+    res.json({ success: true, data: { lab } });
+  } catch (err) {
+    if (err.code === 11000) return res.status(400).json({ success: false, message: 'Lab code already exists' });
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.deleteLab = async (req, res) => {
+  try {
+    const lab = await Lab.findByIdAndDelete(req.params.id);
+    if (!lab) return res.status(404).json({ success: false, message: 'Lab not found' });
+    res.json({ success: true, message: 'Lab deleted' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+exports.getLabStudents = async (req, res) => {
+  try {
+    const lab = await Lab.findById(req.params.id).lean();
+    if (!lab) return res.status(404).json({ success: false, message: 'Lab not found' });
+    const students = await Student.find({ branch: lab.branch, currentSemester: lab.semester })
+      .sort({ enrollmentNo: 1 })
+      .select('firstName lastName enrollmentNo branch currentSemester section session year')
+      .lean();
+    res.json({ success: true, data: { lab, students } });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
@@ -1183,6 +1310,9 @@ exports.exportStudents = async (req, res) => {
   try {
     const filter = {};
     if (req.query.branch) filter.branch = req.query.branch;
+    if (req.query.semesterSession && SEMESTER_SESSION_MAP[req.query.semesterSession]) {
+      filter.currentSemester = { $in: SEMESTER_SESSION_MAP[req.query.semesterSession] };
+    }
     if (req.query.semester) filter.currentSemester = Number(req.query.semester);
     const yearFilter = buildYearFilter(req.query.year ?? req.query.admissionYear);
     if (yearFilter) Object.assign(filter, yearFilter);

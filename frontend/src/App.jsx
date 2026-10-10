@@ -8,8 +8,8 @@ import Layout from "./components/Layout";
 // Icons for nav
 import {
   LayoutDashboard, Users, UserCheck, BookOpen, Bell, Calendar,
-  Clock, GraduationCap, User, ClipboardList, FileText, CreditCard,
-  Library, MessageSquare, BarChart3, CalendarDays, Zap
+  Clock, GraduationCap, User, ClipboardList, FileText,
+  MessageSquare, BarChart3, CalendarDays, Zap
 } from "lucide-react";
 
 // Common pages
@@ -65,7 +65,7 @@ const adminNav = [
   { path: "/admin/bulk-upload-students", label: "Bulk Upload Students", icon: GraduationCap },
   { path: "/admin/faculty", label: "Faculty", icon: UserCheck },
   { path: "/admin/bulk-upload-faculty", label: "Bulk Upload Faculty", icon: UserCheck },
-  { path: "/admin/subjects", label: "Subjects", icon: BookOpen },
+  { path: "/admin/subjects", label: "Subjects & Labs", icon: BookOpen },
   { path: "/admin/results", label: "Results", icon: BarChart3 },
   { path: "/admin/notices", label: "Notices", icon: Bell },
   { path: "/admin/exam-schedule", label: "Exam Schedule", icon: Calendar },
@@ -80,8 +80,6 @@ const studentNav = [
   { path: "/student/assignments", label: "Assignments", icon: FileText },
   { path: "/student/classes", label: "Classes", icon: CalendarDays },
   { path: "/student/exam", label: "Exams & Results", icon: BarChart3 },
-  { path: "/student/fees", label: "Fees", icon: CreditCard },
-  { path: "/student/library", label: "Library", icon: Library },
   { path: "/student/feedback", label: "Feedback", icon: MessageSquare },
   { path: "/student/notices", label: "Notices", icon: Bell },
 ];

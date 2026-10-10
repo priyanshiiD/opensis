@@ -10,8 +10,16 @@ const SESSION_OPTIONS = Array.from({ length: 4 }, (_, index) => {
 });
 
 const BRANCH_OPTIONS = ['CSE', 'IT', 'ECE', 'IP', 'BM', 'CIVIL', 'MC', 'ME', 'CE'];
-const SEMESTER_OPTIONS = [1, 2, 3, 4, 5, 6, 7, 8];
-const SECTION_OPTIONS = ['A', 'B', 'C', 'D', 'E', 'F'];
+const SEMESTER_SESSION_OPTIONS = [
+  { value: 'july-december', label: 'July-December' },
+  { value: 'january-june', label: 'January-June' },
+];
+const SEMESTER_SESSION_MAP = {
+  'july-december': [1, 3, 5, 7],
+  'january-june': [2, 4, 6, 8],
+};
+const FIRST_YEAR_SECTIONS = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'];
+const OTHER_YEAR_SECTIONS = ['A', 'B'];
 
 const YEAR_OPTIONS = [
   { value: '1', label: '1st Year' },
@@ -56,19 +64,40 @@ export default function AdminStudents() {
   const [pages, setPages] = useState(1);
   const [search, setSearch] = useState('');
   const [session, setSession] = useState('');
+  const [semesterSession, setSemesterSession] = useState('');
   const [year, setYear] = useState('');
   const [branch, setBranch] = useState('');
   const [semester, setSemester] = useState('');
   const [section, setSection] = useState('');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [filterApplied, setFilterApplied] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  const allowedSemesters = year ? YEAR_SEMESTER_MAP[String(year)] || [] : [];
+  const yearSemesters = year ? YEAR_SEMESTER_MAP[String(year)] || [] : [];
+  const sessionSemesters = semesterSession ? SEMESTER_SESSION_MAP[semesterSession] || [] : [];
+  const allowedSemesters = semesterSession
+    ? yearSemesters.filter(semesterNumber => sessionSemesters.includes(semesterNumber))
+    : yearSemesters;
+  const allowedSections = year === '1' ? FIRST_YEAR_SECTIONS : OTHER_YEAR_SECTIONS;
 
   const handleSessionChange = (value) => {
     setSession(value);
+    setSemesterSession('');
+    setYear('');
+    setBranch('');
+    setSemester('');
+    setSection('');
+    setPage(1);
+  };
+
+  const handleSemesterSessionChange = (value) => {
+    setSemesterSession(value);
+    setYear('');
+    setBranch('');
+    setSemester('');
+    setSection('');
     setPage(1);
   };
 
@@ -99,10 +128,12 @@ export default function AdminStudents() {
   };
 
   const load = async () => {
+    if (!session && !year && !branch && !semester && !section) return;
     setLoading(true);
     try {
       const params = new URLSearchParams({ page, limit: 15 });
       if (session) params.set('session', session);
+      if (semesterSession) params.set('semesterSession', semesterSession);
       if (year) params.set('year', year);
       if (branch) params.set('branch', branch);
       if (semester) params.set('semester', semester);
@@ -116,7 +147,17 @@ export default function AdminStudents() {
     }
   };
 
-  useEffect(() => { load(); }, [page, session, year, branch, semester, section]);
+  useEffect(() => {
+    const hasFilter = session || year || branch || semester || section;
+    if (hasFilter) {
+      setFilterApplied(true);
+      load();
+    } else {
+      setFilterApplied(false);
+      setStudents([]);
+      setTotal(0);
+    }
+  }, [page, session, year, branch, semester, section]);
 
   const filtered = search
     ? students.filter(s => `${s.firstName} ${s.lastName} ${s.enrollmentNo} ${s.email || ''}`.toLowerCase().includes(search.toLowerCase()))
@@ -141,6 +182,7 @@ export default function AdminStudents() {
     try {
       const params = new URLSearchParams();
       if (session) params.set('session', session);
+      if (semesterSession) params.set('semesterSession', semesterSession);
       if (year) params.set('year', year);
       if (branch) params.set('branch', branch);
       if (semester) params.set('semester', semester);
@@ -196,6 +238,10 @@ export default function AdminStudents() {
             <option value="">All Sessions</option>
             {SESSION_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
+          <select className="input w-auto" value={semesterSession} onChange={e => handleSemesterSessionChange(e.target.value)} disabled={!session}>
+            <option value="">All Semester Sessions</option>
+            {SEMESTER_SESSION_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
           <select className="input w-auto" value={year} onChange={e => handleYearChange(e.target.value)}>
             <option value="">All Years</option>
             {YEAR_OPTIONS.map(option => (
@@ -212,7 +258,7 @@ export default function AdminStudents() {
           </select>
           <select className="input w-auto" value={section} onChange={e => handleSectionChange(e.target.value)} disabled={!year}>
             <option value="">All Sections</option>
-            {SECTION_OPTIONS.map(item => <option key={item} value={item}>{item}</option>)}
+            {allowedSections.map(item => <option key={item} value={item}>{item}</option>)}
           </select>
           <button 
             onClick={handleExportExcel} 
@@ -236,7 +282,15 @@ export default function AdminStudents() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {!filterApplied ? (
+                <tr><td colSpan={7} className="text-center py-14 text-slate-400">
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="text-2xl">🔍</span>
+                    <p className="font-medium text-slate-500">Select a filter above to view students</p>
+                    <p className="text-xs text-slate-400">Choose a session, year, branch, semester, or section</p>
+                  </div>
+                </td></tr>
+              ) : loading ? (
                 [...Array(5)].map((_, i) => (
                   <tr key={i} className="border-b border-slate-100">
                     {[...Array(7)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>)}

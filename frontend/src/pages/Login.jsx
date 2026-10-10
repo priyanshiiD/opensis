@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { Eye, EyeOff, GraduationCap, Users, ShieldCheck, ChevronRight, AlertCircle, Globe, Award, Landmark, Mail, Lock } from 'lucide-react';
+import { Eye, EyeOff, GraduationCap, Users, ShieldCheck, ChevronRight, AlertCircle, Globe, Award, Mail, Lock } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function Login() {
@@ -154,7 +154,7 @@ export default function Login() {
           <div className="bg-white/[0.02] border border-white/10 rounded-2xl p-6 mb-6 mt-8 shadow-2xl relative overflow-hidden backdrop-blur-sm">
             <div className="absolute top-0 right-0 w-24 h-24 bg-sgsits-gold-500/5 rounded-full blur-xl pointer-events-none" />
             <span className="block text-[10px] font-bold uppercase tracking-widest text-sgsits-gold-500 mb-2">INSTITUTE MOTTO</span>
-            <span className="block text-2xl font-semibold text-white tracking-wide mb-2 font-serif font-semibold">"आचारः प्रथमो धर्मः"</span>
+            <span className="block text-2xl font-semibold text-white tracking-wide mb-2 font-serif">"आचारः प्रथमो धर्मः"</span>
             <span className="block text-xs text-slate-400 italic">"Right conduct is the first and highest duty"</span>
           </div>
 
@@ -213,7 +213,7 @@ export default function Login() {
 
           <div className="mb-6 text-center">
             <h3 className="text-2xl font-black text-slate-800 tracking-tight mb-1">Welcome Back</h3>
-            <p className="text-slate-400 text-xs">Please sign in to access your administrative workspace.</p>
+            <p className="text-slate-400 text-xs">Please sign in to access your portal.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-5">

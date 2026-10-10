@@ -28,19 +28,34 @@ function DeleteModal({ name, onConfirm, onCancel, loading }) {
 
 export default function AdminFaculty() {
   const [faculty, setFaculty] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [department, setDepartment] = useState('');
+  const [filterApplied, setFilterApplied] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
 
-  const load = () => {
+  const load = (dept) => {
     setLoading(true);
-    api.get('/admin/faculty').then(r => setFaculty(r.data.data.faculty)).finally(() => setLoading(false));
+    const params = new URLSearchParams();
+    if (dept) params.set('department', dept);
+    api.get(`/admin/faculty?${params}`).then(r => setFaculty(r.data.data.faculty)).finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  // Faculty is only loaded when department filter is applied
+  const handleDepartmentChange = (value) => {
+    setDepartment(value);
+    if (value) {
+      setFilterApplied(true);
+      load(value);
+    } else {
+      setFilterApplied(false);
+      setFaculty([]);
+    }
+  };
+
+  // Remove the initial auto-load on mount
 
   const filtered = faculty.filter(f => {
     const matchesDept = !department || f.department === department;
@@ -114,8 +129,8 @@ export default function AdminFaculty() {
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input className="input pl-9" placeholder="Search name, employee ID or email" value={search} onChange={e => setSearch(e.target.value)} />
           </div>
-          <select className="input w-auto" value={department} onChange={e => setDepartment(e.target.value)}>
-            <option value="">All Departments</option>
+          <select className="input w-auto" value={department} onChange={e => handleDepartmentChange(e.target.value)}>
+            <option value="">— Select Department —</option>
             <option>IT</option><option>CSE</option><option>ECE</option><option>ME</option><option>CE</option>
           </select>
           <button 
@@ -140,7 +155,15 @@ export default function AdminFaculty() {
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {!filterApplied ? (
+                <tr><td colSpan={7} className="text-center py-14 text-slate-400">
+                  <div className="flex flex-col items-center gap-2">
+                    <span className="text-2xl">🔍</span>
+                    <p className="font-medium text-slate-500">Select a department to view faculty</p>
+                    <p className="text-xs text-slate-400">Choose a department from the filter above</p>
+                  </div>
+                </td></tr>
+              ) : loading ? (
                 [...Array(3)].map((_, i) => (
                   <tr key={i} className="border-b border-slate-100">
                     {[...Array(7)].map((_, j) => <td key={j} className="px-4 py-3"><div className="h-4 bg-slate-100 rounded animate-pulse" /></td>)}
