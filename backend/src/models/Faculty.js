@@ -6,7 +6,17 @@ const facultySchema = new mongoose.Schema({
   firstName: { type: String, required: true, trim: true },
   lastName: { type: String, required: true, trim: true },
   personalEmail: { type: String, trim: true, lowercase: true },
-  phone: { type: String, trim: true },
+  phone: {
+    type: String,
+    trim: true,
+    validate: {
+      validator: function (value) {
+        if (!value) return true;
+        return /^[0-9\s\-\+\(\)]+$/.test(value) && value.replace(/\D/g, '').length >= 10;
+      },
+      message: 'Phone number must be valid (at least 10 digits)',
+    },
+  },
   address: { type: String, trim: true },
   gender: { type: String, enum: ['male', 'female', 'other', 'prefer-not-to-say'] },
   department: { type: String, trim: true },
