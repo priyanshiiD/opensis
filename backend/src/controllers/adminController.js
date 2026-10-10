@@ -15,6 +15,20 @@ const xlsx = require('xlsx');
 const path = require('path');
 const fs = require('fs');
 
+const normalizePhone = (value) => String(value ?? '').trim();
+
+const getPhoneFromRow = (row) => normalizePhone(
+  row.phone
+  ?? row.Phone
+  ?? row.phoneNumber
+  ?? row.PhoneNumber
+  ?? row.mobile
+  ?? row.Mobile
+);
+
+const isValidPhone = (phone) => !phone
+  || (/^[0-9\s\-\+\(\)]+$/.test(phone) && phone.replace(/\D/g, '').length >= 10);
+
 const normalizeSessionValue = (value) => {
   const session = String(value || '').trim();
   const canonicalMatch = session.match(/^(\d{4})-(\d{4})$/);
@@ -375,9 +389,15 @@ exports.bulkUploadStudents = async (req, res) => {
         const rollNo = String(row.rollNo || row.RollNo || row.Roll || row.Roll_No || '').trim();
         const fullName = String(row.fullName || row.FullName || row.name || row.Name || '').trim();
         const email = String(row.email || row.Email || '').trim().toLowerCase();
+        const phone = getPhoneFromRow(row);
 
-        if (!rollNo || !fullName || !email) {
-          results.failed.push({ row: idx + 2, reason: 'Missing required field(s): rollNo, fullName, or email', data: row });
+        if (!rollNo || !fullName || !email || !phone) {
+          results.failed.push({ row: idx + 2, reason: 'Missing required field(s): rollNo, fullName, email, or phone', data: row });
+          continue;
+        }
+
+        if (!isValidPhone(phone)) {
+          results.failed.push({ row: idx + 2, reason: 'Invalid phone number. Use at least 10 digits', data: { phone } });
           continue;
         }
 
@@ -435,6 +455,7 @@ exports.bulkUploadStudents = async (req, res) => {
           section,
           year: Number(year),
           session,
+          phone,
         });
 
         results.success.push({ row: idx + 2, userId: user._id, studentId: student._id, email, rollNo });
@@ -475,9 +496,15 @@ exports.bulkUploadFaculty = async (req, res) => {
         const email = String(row.email || row.Email || '').trim().toLowerCase();
         const department = String(row.department || row.Department || selectedDepartment).trim();
         const designation = String(row.designation || row.Designation || '').trim();
+        const phone = getPhoneFromRow(row);
 
-        if (!employeeId || !fullName || !email || !designation) {
-          results.failed.push({ row: idx + 2, reason: 'Missing required field(s)', data: row });
+        if (!employeeId || !fullName || !email || !phone || !designation) {
+          results.failed.push({ row: idx + 2, reason: 'Missing required field(s): employeeId, fullName, email, phone, or designation', data: row });
+          continue;
+        }
+
+        if (!isValidPhone(phone)) {
+          results.failed.push({ row: idx + 2, reason: 'Invalid phone number. Use at least 10 digits', data: { phone } });
           continue;
         }
 
@@ -521,7 +548,15 @@ exports.bulkUploadFaculty = async (req, res) => {
 
         const user = await User.create({ email, passwordHash, role: 'faculty', username });
 
-        const faculty = await Faculty.create({ userId: user._id, employeeId, firstName, lastName, department: selectedDepartment, designation });
+        const faculty = await Faculty.create({
+          userId: user._id,
+          employeeId,
+          firstName,
+          lastName,
+          department: selectedDepartment,
+          designation,
+          phone,
+        });
 
         results.success.push({ row: idx + 2, userId: user._id, facultyId: faculty._id, email, employeeId });
       } catch (errRow) {
