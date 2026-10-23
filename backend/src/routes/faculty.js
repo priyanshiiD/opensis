@@ -3,6 +3,8 @@ const { authenticate, authorize } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const excelUpload = require('../middleware/excelUpload');
 const ctrl = require('../controllers/facultyController');
+const noticeCtrl = require('../controllers/facultyNoticeController');
+const mstCtrl = require('../controllers/mstMarkController');
 
 router.use(authenticate, authorize('faculty'));
 
@@ -36,8 +38,20 @@ router.get('/marks/template', ctrl.downloadMarksTemplate);
 router.get('/marks/export', ctrl.downloadMarksReport);
 router.get('/class-students', ctrl.getClassStudents);
 router.get('/marks', ctrl.getMarks);
+
+router.get('/mst-marks/options', mstCtrl.getOptions);
+router.get('/mst-marks/template', mstCtrl.downloadTemplate);
+router.get('/mst-marks', mstCtrl.getMarks);
+router.post('/mst-marks/preview', excelUpload.single('file'), mstCtrl.previewUpload);
+router.post('/mst-marks/upload', excelUpload.single('file'), mstCtrl.uploadMarks);
+router.post('/mst-marks/:id/publish', mstCtrl.publishMarks);
 router.get('/notices', ctrl.getNotices);
 router.post('/notices/mark-read', ctrl.markNoticesRead);
+router.get('/notices/audiences', noticeCtrl.getAudienceOptions);
+router.get('/notices/mine', noticeCtrl.getMyNotices);
+router.post('/notices', upload.single('attachment'), noticeCtrl.createNotice);
+router.put('/notices/:id', upload.single('attachment'), noticeCtrl.updateNotice);
+router.delete('/notices/:id', noticeCtrl.deleteNotice);
 router.get('/class-schedule', ctrl.getClassSchedule);
 router.get('/feedback', ctrl.getFeedback);
 

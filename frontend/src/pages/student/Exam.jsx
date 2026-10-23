@@ -22,12 +22,36 @@ const EXAM_TYPE_LABELS = {
   'mid-sem-2': 'Mid Semester 2',
 };
 
+const groupMstMarks = (items = []) => {
+  const groups = new Map();
+  items.forEach((item) => {
+    const key = String(item.subjectId || item.subjectCode || item._id);
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        subjectCode: item.subjectCode,
+        subjectName: item.subjectName,
+        mst1: null,
+        mst2: null,
+        publishedAt: item.publishedAt,
+      });
+    }
+    const group = groups.get(key);
+    group[item.assessment] = item;
+    if (item.publishedAt && (!group.publishedAt || new Date(item.publishedAt) > new Date(group.publishedAt))) {
+      group.publishedAt = item.publishedAt;
+    }
+  });
+  return [...groups.values()].sort((a, b) => String(a.subjectCode || '').localeCompare(String(b.subjectCode || '')));
+};
+
 export default function StudentExam() {
   const { selectedSession, selectedTerm } = useAuth();
   const [tab, setTab] = useState('timetable');
   const [timetables, setTimetables] = useState([]);
   const [results, setResults] = useState([]);
   const [internalMarks, setInternalMarks] = useState([]);
+  const [mstMarks, setMstMarks] = useState([]);
   const [revaluationRequests, setRevaluationRequests] = useState([]);
   const [loadingRevaluations, setLoadingRevaluations] = useState(false);
   const [revalForm, setRevalForm] = useState({ subjectId: '', semester: '', session: '', reason: '' });
@@ -69,6 +93,7 @@ export default function StudentExam() {
       api.get('/student/exam-timetable').then(r => setTimetables(r.data.data.timetables || [])),
       api.get('/student/result').then(r => setResults(r.data.data.results)),
       api.get('/student/internal-marks').then(r => setInternalMarks(r.data.data.results || [])),
+      api.get('/student/mst-marks').then(r => setMstMarks(r.data.data.items || [])).catch(() => {}),
     ]).finally(() => setLoading(false));
   }, [selectedSession, selectedTerm]);
 
@@ -83,6 +108,10 @@ export default function StudentExam() {
         ? `/student/internal-marks?semester=${encodeURIComponent(semester)}`
         : '/student/internal-marks');
       setInternalMarks(internal.data.data.results || []);
+      const mst = await api.get(semester
+        ? `/student/mst-marks?semester=${encodeURIComponent(semester)}`
+        : '/student/mst-marks');
+      setMstMarks(mst.data.data.items || []);
     } catch {
       toast.error('Failed to load results');
     }
@@ -394,6 +423,44 @@ export default function StudentExam() {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {mstMarks.length > 0 && (
+            <div className="card">
+              <h2 className="text-lg font-bold text-slate-800">MST Marks</h2>
+              <p className="text-sm text-slate-500 mt-1 mb-4">Published Mid Semester Test marks</p>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="text-left px-3 py-2">Subject</th>
+                      <th className="text-center px-3 py-2">MST 1</th>
+                      <th className="text-center px-3 py-2">MST 2</th>
+                      <th className="text-left px-3 py-2">Published</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupMstMarks(mstMarks).map((group) => (
+                      <tr key={group.key} className="border-b border-slate-100 last:border-0">
+                        <td className="px-3 py-2">
+                          <span className="font-medium text-slate-800">{group.subjectCode || 'Subject'}</span>
+                          {group.subjectName && <span className="text-xs text-slate-500 block">{group.subjectName}</span>}
+                        </td>
+                        <td className="px-3 py-2 text-center font-semibold">
+                          {group.mst1 ? `${group.mst1.marks} / ${group.mst1.maxMarks}` : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-center font-semibold">
+                          {group.mst2 ? `${group.mst2.marks} / ${group.mst2.maxMarks}` : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-xs text-slate-500">
+                          {group.publishedAt ? new Date(group.publishedAt).toLocaleDateString('en-IN') : '—'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 

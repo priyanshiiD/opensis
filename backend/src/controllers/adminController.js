@@ -2127,7 +2127,12 @@ exports.createNotice = async (req, res) => {
       ...req.body,
       session: normalizeSessionValue(req.body.session),
       term: req.body.term || undefined,
+      authorRole: 'admin',
       postedBy: admin?._id,
+      postedByFaculty: undefined,
+      audienceTargets: undefined,
+      audienceSummary: undefined,
+      audienceMode: undefined,
     });
     res.status(201).json({ success: true, data: { notice } });
   } catch (err) {

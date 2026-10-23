@@ -25,6 +25,7 @@ const { resolveFeedbackConfig, isFeedbackOpen } = require('../utils/feedbackConf
 const { getStudentTimetable } = require('../services/timetableData');
 const { resolveStudentSection } = require('../utils/sectionResolver');
 const { serializeAdmitCard } = require('../services/admitCard');
+const { buildStudentNoticeFilter } = require('../services/noticeAudienceService');
 
 exports.getMyTimetable = async (req, res) => {
   try {
@@ -435,32 +436,30 @@ exports.submitAssignment = async (req, res) => {
 exports.getNotices = async (req, res) => {
   try {
     const student = await Student.findOne({ userId: req.user._id }).lean();
+    if (!student) return res.status(404).json({ success: false, message: 'Student profile not found' });
     const academic = getAcademicContext(student, req.academicSession, req.academicHistory, req.academicTerm);
-    const noticeFilter = {
-      audience: { $in: ['all', 'students'] },
-      $and: [
-        { session: academic.session },
-        { $or: [{ term: academic.term }, { term: { $exists: false } }, { term: null }] },
-      ],
-      $or: [
-        { targetStudentIds: { $exists: false } },
-        { targetStudentIds: { $size: 0 } },
-      ],
-    };
-
-    if (student?._id) {
-      noticeFilter.$or.push({ targetStudentIds: student._id });
-    }
+    const noticeFilter = await buildStudentNoticeFilter({ student, academic });
 
     const notices = await Notice.find(noticeFilter)
+      .populate('postedBy', 'firstName lastName')
+      .populate('postedByFaculty', 'firstName lastName')
       .sort({ isPinned: -1, createdAt: -1 })
       .lean();
 
     const userIdStr = String(req.user._id);
-    const mapped = notices.map(n => ({
-      ...n,
-      isRead: Array.isArray(n.readBy) && n.readBy.some(id => String(id) === userIdStr),
-    }));
+    const mapped = notices.map((n) => {
+      const adminName = n.postedBy
+        ? `${n.postedBy.firstName || ''} ${n.postedBy.lastName || ''}`.trim()
+        : '';
+      const facultyName = n.postedByFaculty
+        ? `${n.postedByFaculty.firstName || ''} ${n.postedByFaculty.lastName || ''}`.trim()
+        : '';
+      return {
+        ...n,
+        authorName: facultyName || adminName || (n.authorRole === 'faculty' ? 'Faculty' : 'Administration'),
+        isRead: Array.isArray(n.readBy) && n.readBy.some(id => String(id) === userIdStr),
+      };
+    });
     const unreadCount = mapped.filter(n => !n.isRead).length;
 
     res.json({ success: true, data: { notices: mapped, unreadCount } });
@@ -473,22 +472,9 @@ exports.markNoticesRead = async (req, res) => {
   try {
     const { noticeIds } = req.body || {};
     const student = await Student.findOne({ userId: req.user._id }).lean();
-    const academic = getAcademicContext(student, req.academicSession, req.academicHistory);
-    const noticeFilter = {
-      audience: { $in: ['all', 'students'] },
-      $and: [
-        { session: academic.session },
-        { $or: [{ term: academic.term }, { term: { $exists: false } }, { term: null }] },
-      ],
-      $or: [
-        { targetStudentIds: { $exists: false } },
-        { targetStudentIds: { $size: 0 } },
-      ],
-    };
-
-    if (student?._id) {
-      noticeFilter.$or.push({ targetStudentIds: student._id });
-    }
+    if (!student) return res.status(404).json({ success: false, message: 'Student profile not found' });
+    const academic = getAcademicContext(student, req.academicSession, req.academicHistory, req.academicTerm);
+    const noticeFilter = await buildStudentNoticeFilter({ student, academic });
 
     if (Array.isArray(noticeIds) && noticeIds.length > 0) {
       noticeFilter._id = { $in: noticeIds };
