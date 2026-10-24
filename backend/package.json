@@ -9,7 +9,7 @@
     "migrate:shift-years": "node scripts/shiftAcademicYears.js",
     "reconcile:faculty": "node scripts/reconcile-faculty-data.js",
     "cleanup:results": "node scripts/cleanup-stale-results.js",
-    "test": "jest --runInBand"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -22,6 +22,7 @@
     "mongodb": "^7.2.0",
     "mongoose": "^8.4.0",
     "multer": "^1.4.5-lts.1",
+    "pdfjs-dist": "^4.10.38",
     "pdfkit": "^0.20.2",
     "uuid": "^10.0.0",
     "xlsx": "^0.18.5"

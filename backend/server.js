@@ -127,7 +127,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 app.use('/uploads', express.static(path.join(__dirname, 'src/uploads')));
 // Serve project docs (sample CSV/XLSX) at /docs
 app.use('/docs', express.static(path.join(__dirname, '..', 'docs')));
@@ -182,11 +182,26 @@ app.use('/api/complaints', complaintRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
+  if (err.isImportUploadError) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
   if (err.message && err.message.includes('Invalid file format')) {
     return res.status(400).json({ success: false, message: err.message });
   }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({
+      success: false,
+      message: 'The request is too large. Reduce the number of rows or the amount of syllabus text.',
+    });
+  }
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ success: false, message: 'File size limit exceeded. Maximum size is 10MB.' });
+    const isImportUpload = String(req.path || '').includes('/subjects/import/');
+    return res.status(400).json({
+      success: false,
+      message: isImportUpload
+        ? 'File size limit exceeded. Maximum size is 5 MB.'
+        : 'File size limit exceeded. Maximum size is 10MB.',
+    });
   }
   res.status(500).json({ success: false, message: 'Internal server error' });
 });

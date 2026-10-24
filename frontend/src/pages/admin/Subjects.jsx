@@ -3,10 +3,11 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import {
   Plus, Pencil, Trash2, Copy, FileText, X, ChevronDown, ChevronRight, Eye,
-  BookOpen, FlaskConical, UserCheck, Download, GraduationCap, Lock, Globe,
+  BookOpen, FlaskConical, UserCheck, Download, GraduationCap, Lock, Globe, Upload,
 } from 'lucide-react';
 import academicConfig from '../../../../shared/academicConfig.json';
 import { departmentMatches, getDepartmentLabel } from '../../constants/departments';
+import SubjectImportModal from './SubjectImportModal';
 
 const BRANCHES       = academicConfig.DEPARTMENTS;
 const SESSIONS       = academicConfig.ACADEMIC_YEARS;
@@ -739,6 +740,7 @@ export default function AdminSubjects() {
   const [studentsModal, setStudentsModal] = useState(null);   // NEW STATE
   const [copyOpen, setCopyOpen] = useState(false);
   const [commonModal, setCommonModal] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Load faculty once
   useEffect(() => {
@@ -857,9 +859,14 @@ export default function AdminSubjects() {
           <h1 className="text-2xl font-bold text-slate-800">Scheme of Subjects</h1>
           <p className="text-slate-500 text-sm mt-0.5">Design the academic scheme — session-wise, department-wise</p>
         </div>
-        <button onClick={() => setCopyOpen(true)} className="btn-secondary">
-          <Copy className="w-4 h-4" /> Copy Scheme
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={() => setImportOpen(true)} className="btn-secondary">
+            <Upload className="w-4 h-4" /> Import
+          </button>
+          <button onClick={() => setCopyOpen(true)} className="btn-secondary">
+            <Copy className="w-4 h-4" /> Copy Scheme
+          </button>
+        </div>
       </div>
 
       {/* Session + Department selector — the primary "step" */}
@@ -964,6 +971,25 @@ export default function AdminSubjects() {
           onDone={(toSession) => {
             setCopyOpen(false);
             setSession(toSession);
+          }}
+        />
+      )}
+      {/* Subject and lab import modal */}
+      {importOpen && (
+        <SubjectImportModal
+          session={session}
+          branch={branch}
+          onClose={() => setImportOpen(false)}
+          onDone={(selection) => {
+            setImportOpen(false);
+            const nextSession = selection?.session || session;
+            const nextBranch = selection?.branch || branch;
+            if (nextSession === session && nextBranch === branch) {
+              load();
+              return;
+            }
+            if (nextSession !== session) setSession(nextSession);
+            if (nextBranch !== branch) setBranch(nextBranch);
           }}
         />
       )}

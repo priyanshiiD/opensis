@@ -23,7 +23,7 @@ feedback, and complaints.
 | Auth | JWT access/refresh tokens, bcrypt |
 | Frontend | React 18, Vite, Tailwind CSS, React Router v6 |
 | Client libraries | Axios, react-to-print, lucide-react, react-hot-toast, date-fns |
-| File handling | Multer, ExcelJS, xlsx, mammoth, PDFKit |
+| File handling | Multer, ExcelJS, xlsx, pdfjs-dist, mammoth, PDFKit |
 | Shared config | `shared/academicConfig.json`, `shared/roomConfig.json` |
 
 ---
@@ -152,6 +152,42 @@ fetched again.
 - Complaints: resolve assigned complaints and track submitted complaints, with
   current-term default and an "All terms" option
 - Notices
+
+---
+
+## Subject and Lab Import
+
+Admin users can import subjects and labs from the **Scheme of Subjects** page using
+the **Import** button. The import runs in two steps: preview and confirm. No data
+is written during preview.
+
+**Supported files:** `.xlsx`, `.xls`, `.csv`, and text-based `.pdf`; maximum
+5 MB and 500 rows per import.
+
+**Template columns:**
+
+| Column | Notes |
+| --- | --- |
+| Code | Required; unique within the selected academic year, department and semester |
+| Subject Name | Required |
+| Type | `Subject` or `Lab`; if empty, an L-T-P of `0-0-P` is treated as a Lab with a warning |
+| L-T-P | Format such as `3-1-0` |
+| Credits, Theory End, CW, Practical End, SW, Total | Numeric marks fields |
+| Faculty | Comma-separated existing faculty names or emails from the selected department |
+| Semester | Optional; overrides the selected semester for that row |
+| Year | Optional; must match the row semester when provided |
+| Syllabus | Optional syllabus text |
+
+Total marks are calculated as `Theory End + CW + Practical End + SW`. A mismatch
+is reported as a warning. Existing codes are skipped by default; choose
+**Update existing** to update them while preserving their internal IDs. Imported
+rows use the same validation, faculty assignment, and grouping as manually added
+subjects and labs.
+
+To import: select the academic year, department, year and semester, download the
+Excel template if needed, upload the completed file, review the preview, then
+select **Confirm Import**. Text PDF imports can be corrected directly in the
+preview before confirming.
 
 ---
 
