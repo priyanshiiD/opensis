@@ -2,9 +2,7 @@ const router = require('express').Router();
 const { authenticate, authorize } = require('../middleware/auth');
 const ctrl = require('../controllers/adminController');
 const complaintCtrl = require('../controllers/complaintController');
-const subjectImportCtrl = require('../controllers/subjectImportController');
 const excelUpload = require('../middleware/excelUpload');
-const importUpload = require('../middleware/importUpload');
 const upload = require('../middleware/upload');
 
 router.use(authenticate);
@@ -31,9 +29,6 @@ router.put('/faculty/:id/teaching-assignments', authorize('admin'), ctrl.replace
 router.delete('/faculty/:id', authorize('admin'), ctrl.deleteFaculty);
 
 router.get('/subjects/common-year1', authorize('admin'), ctrl.getCommonYearOne);
-router.get('/subjects/import/template', authorize('admin'), subjectImportCtrl.downloadTemplate);
-router.post('/subjects/import/preview', authorize('admin'), importUpload.single('file'), subjectImportCtrl.previewImport);
-router.post('/subjects/import/confirm', authorize('admin'), subjectImportCtrl.confirmImport);
 router.post('/subjects/import-common', authorize('admin'), ctrl.importCommonYearOne);
 router.post('/subjects/copy', authorize('admin'), ctrl.copyScheme);
 router.post('/subjects/copy-year1-all-branches', authorize('admin'), ctrl.copyYearOneToAllBranches);
