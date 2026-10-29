@@ -159,6 +159,44 @@ test('parses Excel headers case-insensitively and tolerates common header variat
   });
 });
 
+test('parses CSV files without coercing codes or L-T-P values into dates', async () => {
+  const buffer = Buffer.from([
+    'Code,Sub Name,Type,L-T-P,Cr,Th.End,CW,Pr.End,SW,Total,Faculty',
+    'IT101,Mathematics,Subject,3-1-0,4,70,30,0,0,100,Anita Sharma',
+    'IT351,Networks Lab,Lab,0-0-2,1,0,0,60,40,100,Anita Sharma',
+  ].join('\n'));
+
+  const parsed = await parseImportFile({ buffer, originalname: 'scheme.csv', size: buffer.length });
+
+  expect(parsed.fileType).toBe('csv');
+  expect(parsed.rows).toHaveLength(2);
+  expect(parsed.rows[0]).toMatchObject({
+    code: 'IT101',
+    name: 'Mathematics',
+    type: 'Subject',
+    ltp: '3-1-0',
+    credits: '4',
+    theoryEnd: '70',
+    cw: '30',
+    total: '100',
+  });
+  expect(parsed.rows[1]).toMatchObject({ code: 'IT351', ltp: '0-0-2', type: 'Lab' });
+});
+
+test('rejects unsupported file types and files larger than 5 MB', async () => {
+  await expect(parseImportFile({
+    buffer: Buffer.from('Code,Subject Name\n'),
+    originalname: 'scheme.txt',
+    size: 20,
+  })).rejects.toThrow(/Invalid file type/i);
+
+  await expect(parseImportFile({
+    buffer: Buffer.alloc(0),
+    originalname: 'scheme.xlsx',
+    size: 5 * 1024 * 1024 + 1,
+  })).rejects.toThrow(/Maximum size is 5 MB/i);
+});
+
 test('preview validates faculty, duplicates, totals, required fields and existing codes', async () => {
   mockImportContext({
     subjects: [{ _id: 'existing-1', code: 'IT301', name: 'Data Structures', semester: 3 }],
@@ -327,6 +365,43 @@ test('confirm updates existing records without changing their internal ID', asyn
     }),
     expect.objectContaining({ mongoSession: null }),
   );
+});
+
+test('confirm revalidates rows on the server instead of trusting the preview', async () => {
+  mockImportContext();
+
+  const result = await confirmSubjectImport({
+    session: '2025-2026',
+    branch: 'IT',
+    year: 2,
+    semester: 3,
+    updateMode: 'skip',
+    rows: [
+      {
+        rowNumber: 2,
+        values: {
+          code: 'IT302', name: '', type: 'subject', ltp: '3-0-0',
+          credits: 3, theoryEnd: 70, cw: 30, practicalEnd: 0, sw: 0, total: 100,
+          faculty: 'Unknown Teacher', semester: 3, year: 2, syllabus: '',
+        },
+      },
+      {
+        rowNumber: 3,
+        values: {
+          code: 'IT303', name: 'Operating Systems', type: 'subject', ltp: '3-0-0',
+          credits: 3, theoryEnd: 70, cw: 30, practicalEnd: 0, sw: 0, total: 100,
+          faculty: 'Anita Sharma', semester: 3, year: 2, syllabus: '',
+        },
+      },
+    ],
+  });
+
+  expect(result.summary).toMatchObject({ created: 1, updated: 0, skipped: 1, errors: 1 });
+  expect(academicSchemeService.createSubjectRecord).toHaveBeenCalledTimes(1);
+  const rejected = result.results.find((item) => item.rowNumber === 2);
+  expect(rejected.action).toBe('skipped');
+  expect(rejected.reason).toMatch(/Subject name is required/i);
+  expect(rejected.reason).toMatch(/Faculty not found: Unknown Teacher/i);
 });
 
 test('uses the data sheet of a workbook that has an instructions sheet first', async () => {

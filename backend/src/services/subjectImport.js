@@ -669,6 +669,7 @@ const parseWorkbookRows = (buffer) => {
   try {
     workbook = xlsx.read(buffer, {
       type: 'buffer',
+      raw: true,
       cellFormula: false,
       cellHTML: false,
       cellNF: false,

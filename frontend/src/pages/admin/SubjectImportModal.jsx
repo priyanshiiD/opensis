@@ -274,8 +274,14 @@ export default function SubjectImportModal({ session: initialSession, branch: in
                     type="file"
                     accept=".xlsx,.xls,.csv,.pdf"
                     onChange={handleFileChange}
-                    className="mt-2 block w-full max-w-xl cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600"
+                    disabled={!selectionsComplete || loading}
+                    className="mt-2 block w-full max-w-xl cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-60"
                   />
+                  {!selectionsComplete && (
+                    <p className="text-xs text-slate-500">
+                      Select the academic year, department, year and semester before uploading a file.
+                    </p>
+                  )}
                   {file && (
                     <p className="text-xs text-slate-600">
                       Selected file: <span className="font-medium">{file.name}</span> ({Math.ceil(file.size / 1024)} KB)
