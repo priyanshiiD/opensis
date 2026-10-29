@@ -6,6 +6,7 @@ const Lab = require('../models/Lab');
 const Room = require('../models/Room');
 const User = require('../models/User');
 const Faculty = require('../models/Faculty');
+const FacultyTeachingAssignment = require('../models/FacultyTeachingAssignment');
 const { validateEntry, duplicateKeyMessage } = require('../services/timetableValidator');
 const { getStudentTimetable, getFacultyTimetable, getTodayTimetable } = require('../services/timetableData');
 const { createTimetablePdf, cleanFilenamePart } = require('../utils/timetablePdf');
@@ -14,7 +15,8 @@ const populateEntry = query => query
   .populate('section', 'department year sectionName batches')
   .populate('subject', 'code name type subjectType branch semester facultyId')
   .populate('room', 'name building roomNo type')
-  .populate('faculty', 'email role');
+  .populate('faculty', 'email role')
+  .populate('faculties', 'email role');
 
 const addFacultyNames = async entries => {
   const list = Array.isArray(entries) ? entries : [entries];
@@ -25,16 +27,37 @@ const addFacultyNames = async entries => {
   ]);
   const subjectMap = new Map(subjectDocs.map(subject => [subject._id.toString(), subject]));
   labDocs.forEach(lab => subjectMap.set(lab._id.toString(), { ...lab, type: 'lab' }));
-  const facultyIds = list.map(entry => entry.faculty?._id || entry.faculty).filter(Boolean);
+
+  const facultyIds = list.flatMap(entry => {
+    const ids = [];
+    if (Array.isArray(entry.faculties) && entry.faculties.length > 0) {
+      entry.faculties.forEach(f => ids.push((f?._id || f)?.toString()));
+    }
+    if (entry.faculty) {
+      ids.push((entry.faculty?._id || entry.faculty)?.toString());
+    }
+    return ids;
+  }).filter(Boolean);
+
   const profiles = await Faculty.find({ userId: { $in: facultyIds } }).select('userId firstName lastName').lean();
   const names = new Map(profiles.map(profile => [profile.userId.toString(), `${profile.firstName} ${profile.lastName}`.trim()]));
-  return list.map(entry => ({
-    ...entry,
-    subject: entry.subject
-      ? { ...(subjectMap.get((entry.subject?._id || entry.subject)?.toString()) || entry.subject), type: entry.subjectType === 'Lab' ? 'lab' : (entry.subject.type || subjectMap.get((entry.subject?._id || entry.subject)?.toString())?.type) }
-      : entry.subject,
-    facultyName: names.get((entry.faculty?._id || entry.faculty)?.toString()) || entry.faculty?.email || '',
-  }));
+
+  return list.map(entry => {
+    const entryFacultyIds = (Array.isArray(entry.faculties) && entry.faculties.length > 0)
+      ? entry.faculties.map(f => (f?._id || f)?.toString()).filter(Boolean)
+      : [(entry.faculty?._id || entry.faculty)?.toString()].filter(Boolean);
+    const facultyNames = [...new Set(entryFacultyIds.map(id => names.get(id) || '').filter(Boolean))];
+    const facultyName = facultyNames.join(', ') || names.get((entry.faculty?._id || entry.faculty)?.toString()) || entry.faculty?.email || '';
+
+    return {
+      ...entry,
+      subject: entry.subject
+        ? { ...(subjectMap.get((entry.subject?._id || entry.subject)?.toString()) || entry.subject), type: entry.subjectType === 'Lab' ? 'lab' : (entry.subject.type || subjectMap.get((entry.subject?._id || entry.subject)?.toString())?.type) }
+        : entry.subject,
+      facultyNames,
+      facultyName,
+    };
+  });
 };
 
 const normalizeEntries = body => {
@@ -42,11 +65,18 @@ const normalizeEntries = body => {
   return [{ ...body, entries: undefined }];
 };
 
-const withCalculatedSlots = (entry, validation) => ({
-  ...entry,
-  slotCount: validation.slotCount,
-  slots: validation.slots,
-});
+const withCalculatedSlots = (entry, validation) => {
+  const faculties = Array.isArray(entry.faculties) && entry.faculties.length > 0
+    ? entry.faculties
+    : (entry.faculty ? [entry.faculty] : []);
+  return {
+    ...entry,
+    faculty: entry.faculty || faculties[0],
+    faculties,
+    slotCount: validation.slotCount,
+    slots: validation.slots,
+  };
+};
 
 const conflictResponse = (res, validationResults) => {
   const errors = validationResults.flatMap(({ day, errors }) => errors.map(message => ({ day, message })));
@@ -63,18 +93,59 @@ const conflictResponse = (res, validationResults) => {
 
 exports.getOptions = async (req, res) => {
   try {
-    const [subjects, labs, rooms, faculty] = await Promise.all([
-      Subject.find().sort({ code: 1 }).select('code name type branch semester facultyId').lean(),
-      Lab.find().sort({ code: 1 }).select('code name branch semester facultyId').lean(),
+    const [subjects, labs, rooms, faculty, assignments] = await Promise.all([
+      Subject.find().sort({ code: 1 }).select('code name type branch semester session facultyId').lean(),
+      Lab.find().sort({ code: 1 }).select('code name branch semester session facultyId').lean(),
       Room.find().sort({ name: 1 }).lean(),
       User.find({ role: 'faculty', isActive: true }).select('email role').sort({ email: 1 }).lean(),
+      FacultyTeachingAssignment.find().select('facultyId itemType subjectId labId session semester branch').lean(),
     ]);
     const profiles = await Faculty.find({ userId: { $in: faculty.map(item => item._id) } })
       .select('userId firstName lastName').lean();
     const names = new Map(profiles.map(profile => [profile.userId.toString(), `${profile.firstName} ${profile.lastName}`.trim()]));
-    const labSubjects = labs.map(lab => ({ ...lab, type: 'lab', subjectType: 'Lab' }));
+    const profileToUserId = new Map(profiles.map(profile => [profile._id.toString(), profile.userId.toString()]));
+
+    const subjectsWithAssignments = subjects.map(subject => {
+      const assignedIds = new Set();
+      assignments
+        .filter(a => (a.itemType === 'class' || !a.itemType) && a.subjectId && a.subjectId.toString() === subject._id.toString())
+        .forEach(a => {
+          const userId = profileToUserId.get(a.facultyId?.toString());
+          if (userId) assignedIds.add(userId);
+        });
+      if (subject.facultyId) {
+        const userId = profileToUserId.get(subject.facultyId.toString());
+        if (userId) assignedIds.add(userId);
+      }
+      return {
+        ...subject,
+        subjectType: 'Subject',
+        assignedFacultyUserIds: Array.from(assignedIds),
+      };
+    });
+
+    const labSubjects = labs.map(lab => {
+      const assignedIds = new Set();
+      assignments
+        .filter(a => a.itemType === 'lab' && a.labId && a.labId.toString() === lab._id.toString())
+        .forEach(a => {
+          const userId = profileToUserId.get(a.facultyId?.toString());
+          if (userId) assignedIds.add(userId);
+        });
+      if (lab.facultyId) {
+        const userId = profileToUserId.get(lab.facultyId.toString());
+        if (userId) assignedIds.add(userId);
+      }
+      return {
+        ...lab,
+        type: 'lab',
+        subjectType: 'Lab',
+        assignedFacultyUserIds: Array.from(assignedIds),
+      };
+    });
+
     res.json({ success: true, data: {
-      subjects: [...subjects.map(subject => ({ ...subject, subjectType: 'Subject' })), ...labSubjects].sort((a, b) => a.code.localeCompare(b.code)),
+      subjects: [...subjectsWithAssignments, ...labSubjects].sort((a, b) => a.code.localeCompare(b.code)),
       rooms,
       faculty: faculty.map(item => ({
         ...item,

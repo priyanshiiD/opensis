@@ -102,6 +102,7 @@ const populateEntries = query => query
   .sort({ day: 1, startSlot: 1, _id: 1 })
   .populate('subject', 'code name type subjectType')
   .populate('faculty', 'email role')
+  .populate('faculties', 'email role')
   .populate('room', 'name building roomNo type')
   .populate('section', 'department year sectionName batches');
 
@@ -113,16 +114,37 @@ async function addFacultyNames(entries) {
   ]);
   const subjectMap = new Map(subjectDocs.map(subject => [subject._id.toString(), subject]));
   labDocs.forEach(lab => subjectMap.set(lab._id.toString(), { ...lab, type: 'lab' }));
-  const facultyIds = entries.map(entry => entry.faculty?._id).filter(Boolean);
+
+  const facultyIds = entries.flatMap(entry => {
+    const ids = [];
+    if (Array.isArray(entry.faculties) && entry.faculties.length > 0) {
+      entry.faculties.forEach(f => ids.push((f?._id || f)?.toString()));
+    }
+    if (entry.faculty) {
+      ids.push((entry.faculty?._id || entry.faculty)?.toString());
+    }
+    return ids;
+  }).filter(Boolean);
+
   const profiles = await Faculty.find({ userId: { $in: facultyIds } }).select('userId firstName lastName').lean();
   const names = new Map(profiles.map(profile => [profile.userId.toString(), `${profile.firstName} ${profile.lastName}`.trim()]));
-  return entries.map(entry => ({
-    ...entry,
-    subject: entry.subject
-      ? { ...(subjectMap.get((entry.subject?._id || entry.subject)?.toString()) || entry.subject), type: entry.subjectType === 'Lab' ? 'lab' : (entry.subject.type || subjectMap.get((entry.subject?._id || entry.subject)?.toString())?.type) }
-      : entry.subject,
-    facultyName: names.get(entry.faculty?._id?.toString()) || entry.faculty?.email || '',
-  }));
+
+  return entries.map(entry => {
+    const entryFacultyIds = (Array.isArray(entry.faculties) && entry.faculties.length > 0)
+      ? entry.faculties.map(f => (f?._id || f)?.toString()).filter(Boolean)
+      : [(entry.faculty?._id || entry.faculty)?.toString()].filter(Boolean);
+    const facultyNames = [...new Set(entryFacultyIds.map(id => names.get(id) || '').filter(Boolean))];
+    const facultyName = facultyNames.join(', ') || names.get((entry.faculty?._id || entry.faculty)?.toString()) || entry.faculty?.email || '';
+
+    return {
+      ...entry,
+      subject: entry.subject
+        ? { ...(subjectMap.get((entry.subject?._id || entry.subject)?.toString()) || entry.subject), type: entry.subjectType === 'Lab' ? 'lab' : (entry.subject.type || subjectMap.get((entry.subject?._id || entry.subject)?.toString())?.type) }
+        : entry.subject,
+      facultyNames,
+      facultyName,
+    };
+  });
 }
 
 async function getAvailableAcademicYears(filter) {
@@ -205,7 +227,12 @@ async function getStudentTimetable(userId, filters = {}) {
 };
 
 async function getFacultyTimetable(userId, filters = {}) {
-  const baseFilter = { faculty: userId };
+  const baseFilter = {
+    $or: [
+      { faculty: userId },
+      { faculties: userId },
+    ],
+  };
   const availableAcademicYears = await getAvailableAcademicYears(baseFilter);
   const selectedAcademicYear = filters.session
     ? String(filters.session).trim()
@@ -219,7 +246,14 @@ async function getFacultyTimetable(userId, filters = {}) {
     const termFilter = termSemesterFilter(filters.term);
     if (termFilter) entryFilter.semester = termFilter;
   }
-  const entries = await populateEntries(TimetableEntry.find(entryFilter)).lean();
+  const rawEntries = await populateEntries(TimetableEntry.find(entryFilter)).lean();
+  const seen = new Set();
+  const entries = (rawEntries || []).filter(entry => {
+    const id = (entry._id || entry).toString();
+    if (seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
   const [profile, user] = await Promise.all([
     Faculty.findOne({ userId }).select('firstName lastName').lean(),
     User.findById(userId).select('email').lean(),
@@ -269,7 +303,12 @@ const getNextEntry = (allEntries, today) => {
 async function getTodayTimetable(userId, role, now = new Date(), filters = {}) {
   const today = getIndiaDateParts(now);
   if (role === 'faculty') {
-    const baseFilter = { faculty: userId };
+    const baseFilter = {
+      $or: [
+        { faculty: userId },
+        { faculties: userId },
+      ],
+    };
     const availableAcademicYears = await getAvailableAcademicYears(baseFilter);
     const selectedAcademicYear = filters.session
       ? String(filters.session).trim()
@@ -279,7 +318,14 @@ async function getTodayTimetable(userId, role, now = new Date(), filters = {}) {
     const entryFilter = { ...yearFilter };
     const termFilter = termSemesterFilter(filters.term);
     if (termFilter) entryFilter.semester = termFilter;
-    const allEntries = await populateEntries(TimetableEntry.find(entryFilter)).lean();
+    const allRawEntries = await populateEntries(TimetableEntry.find(entryFilter)).lean();
+    const seen = new Set();
+    const allEntries = (allRawEntries || []).filter(entry => {
+      const id = (entry._id || entry).toString();
+      if (seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
     const entries = today.isWeekend ? [] : allEntries.filter(entry => Number(entry.day) === today.day);
     return {
       ...today,

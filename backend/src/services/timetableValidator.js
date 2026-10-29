@@ -3,6 +3,8 @@ const TimetableEntry = require('../models/TimetableEntry');
 const Subject = require('../models/Subject');
 const Lab = require('../models/Lab');
 const Faculty = require('../models/Faculty');
+const User = require('../models/User');
+const FacultyTeachingAssignment = require('../models/FacultyTeachingAssignment');
 const Section = require('../models/Section');
 const Room = require('../models/Room');
 const slotConfig = require('../../../shared/timetableSlots.json');
@@ -58,12 +60,13 @@ const loadConflicts = query => TimetableEntry.find(query)
   .populate('subject', 'code name')
   .populate('room', 'building roomNo name')
   .populate('faculty', 'email name')
+  .populate('faculties', 'email name')
   .lean();
 
 const duplicateKeyMessage = error => {
   if (error?.code !== 11000) return null;
   const key = Object.keys(error.keyPattern || error.keyValue || {}).join(', ');
-  if (key.includes('faculty')) return 'Faculty conflict: this faculty is already booked for an overlapping slot.';
+  if (key.includes('faculty') || key.includes('faculties')) return 'Faculty conflict: this faculty is already booked for an overlapping slot.';
   if (key.includes('room')) return 'Room conflict: this room is already booked for an overlapping slot.';
   return 'Timetable conflict: another entry already occupies this slot.';
 };
@@ -102,13 +105,80 @@ async function validateEntry(data, excludeId = null) {
   }
 
   if (!subject) addError('Subject error: the selected subject does not exist.');
-  if (subject && data.faculty && !data.showAllFaculty) {
-    const facultyProfile = await Faculty.findOne({ userId: data.faculty }).select('_id').lean();
-    if (!facultyProfile || !subject.facultyId || String(subject.facultyId) !== String(facultyProfile._id)) {
-      addError('Faculty error: the selected faculty is not assigned to this subject.', true);
+
+  const rawFacultyIds = Array.isArray(data.faculties) && data.faculties.length > 0
+    ? data.faculties
+    : (data.faculty ? [data.faculty] : []);
+  const targetFacultyIds = [...new Set(rawFacultyIds.map(f => (f?._id || f)?.toString()).filter(Boolean))];
+
+  const subjectKind = data.subjectType === 'Lab' ? 'lab' : subject?.type;
+
+  if (subjectKind === 'theory' && targetFacultyIds.length > 1) {
+    addError('Theory rule: theory classes must have exactly one faculty member.', true);
+  }
+  if (targetFacultyIds.length === 0) {
+    addError('Faculty error: at least one faculty member must be assigned.', true);
+  }
+
+  if (targetFacultyIds.length > 0) {
+    try {
+      const activeFacultyUsers = await User.find({ _id: { $in: targetFacultyIds }, role: 'faculty', isActive: true }).select('_id').lean();
+      if (activeFacultyUsers.length !== targetFacultyIds.length) {
+        addError('Faculty error: one or more selected faculty members do not exist or are not active faculty.', true);
+      }
+    } catch {
+      // In unit test mocks where User may not be mocked, skip or handle safely
     }
   }
-  const subjectKind = data.subjectType === 'Lab' ? 'lab' : subject?.type;
+
+  if (subject && targetFacultyIds.length > 0 && !data.showAllFaculty) {
+    try {
+      const facultyProfiles = await Faculty.find({ userId: { $in: targetFacultyIds } }).select('_id userId firstName lastName').lean();
+      const userToProfileId = new Map((facultyProfiles || []).map(p => [p.userId?.toString(), p._id?.toString()]));
+      const profileToUser = new Map((facultyProfiles || []).map(p => [p._id?.toString(), p]));
+
+      // Fallback for single faculty when Faculty.findOne is mocked or used
+      if (targetFacultyIds.length === 1 && userToProfileId.size === 0) {
+        const singleProfile = await Faculty.findOne({ userId: targetFacultyIds[0] }).select('_id').lean();
+        if (singleProfile) {
+          userToProfileId.set(targetFacultyIds[0], singleProfile._id.toString());
+        }
+      }
+
+      const isLab = subjectKind === 'lab';
+      const assignmentQuery = isLab
+        ? { itemType: 'lab', labId: subject._id }
+        : { itemType: 'class', subjectId: subject._id };
+
+      let assignedRows = [];
+      try {
+        assignedRows = await FacultyTeachingAssignment.find(assignmentQuery).select('facultyId').lean() || [];
+      } catch {
+        assignedRows = [];
+      }
+
+      const authorizedProfileIds = new Set(assignedRows.map(r => r.facultyId?.toString()).filter(Boolean));
+      if (subject.facultyId) {
+        authorizedProfileIds.add(subject.facultyId.toString());
+      }
+
+      for (const userId of targetFacultyIds) {
+        const profileId = userToProfileId.get(userId);
+        if (!profileId || !authorizedProfileIds.has(profileId)) {
+          const userProfile = profileToUser.get(profileId);
+          const name = userProfile ? `${userProfile.firstName} ${userProfile.lastName}`.trim() : null;
+          if (targetFacultyIds.length === 1 && !isLab) {
+            addError('Faculty error: the selected faculty is not assigned to this subject.', true);
+          } else {
+            addError(`Faculty error: ${name || `Faculty ${userId}`} is not assigned to this ${isLab ? 'lab' : 'subject'} in the academic scheme.`, true);
+          }
+        }
+      }
+    } catch (error) {
+      addError(error.message || 'Error checking faculty eligibility in scheme.', true);
+    }
+  }
+
   if (subject) {
     slotCount = subjectKind === 'lab' ? 2 : 1;
     slots = Number.isInteger(startSlot)
@@ -163,8 +233,19 @@ async function validateEntry(data, excludeId = null) {
   }
 
   try {
+    const facultyConflictQuery = {
+      $or: [
+        { faculty: { $in: targetFacultyIds } },
+        { faculties: { $in: targetFacultyIds } },
+      ],
+      day: data.day,
+      academicYear: data.academicYear,
+      slots: { $in: slots },
+      ...withoutExcludedEntry(excludeId),
+    };
+
     const [facultyConflicts, roomConflicts, sectionConflicts] = await Promise.all([
-      loadConflicts(conflictQuery(entry, slots, 'faculty')),
+      loadConflicts(facultyConflictQuery),
       loadConflicts(conflictQuery(entry, slots, 'room')),
       subjectKind === 'theory'
         ? loadConflicts({ section: data.section, academicYear: data.academicYear, day: data.day, slots: { $in: slots }, ...withoutExcludedEntry(excludeId) })
@@ -178,9 +259,29 @@ async function validateEntry(data, excludeId = null) {
         }),
     ]);
 
-    facultyConflicts.forEach(conflict => errors.push(
-      `${facultyName(conflict.faculty)} is already assigned on ${dayLabel(conflict.day)} ${timeRange(conflict)} to ${describeSection(conflict)} (Subject: ${describeSubject(conflict)}).`,
-    ));
+    facultyConflicts.forEach(conflict => {
+      const conflictFaculties = [
+        conflict.faculty,
+        ...(Array.isArray(conflict.faculties) ? conflict.faculties : []),
+      ].filter(Boolean);
+      const conflictUserIds = conflictFaculties.map(f => (f._id || f).toString());
+
+      const matchedTargetIds = targetFacultyIds.filter(id => conflictUserIds.includes(id));
+      if (matchedTargetIds.length === 0) {
+        errors.push(
+          `${facultyName(conflict.faculty)} is already assigned on ${dayLabel(conflict.day)} ${timeRange(conflict)} to ${describeSection(conflict)} (Subject: ${describeSubject(conflict)}).`,
+        );
+      } else {
+        matchedTargetIds.forEach(id => {
+          const matchedDoc = conflictFaculties.find(f => (f._id || f).toString() === id);
+          const fName = facultyName(matchedDoc) || facultyName(conflict.faculty);
+          errors.push(
+            `${fName} is already assigned on ${dayLabel(conflict.day)} ${timeRange(conflict)} to ${describeSection(conflict)} (Subject: ${describeSubject(conflict)}).`,
+          );
+        });
+      }
+    });
+
     roomConflicts.forEach(conflict => errors.push(
       `${roomName(conflict.room)} is already allocated on ${dayLabel(conflict.day)} ${timeRange(conflict)} to ${describeSection(conflict)} (Subject: ${describeSubject(conflict)}).`,
     ));

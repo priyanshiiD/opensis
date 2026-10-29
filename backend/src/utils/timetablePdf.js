@@ -30,7 +30,9 @@ function entryLines(entry, role, studentBatch) {
     ? `${entry.room.building}-${entry.room.roomNo}`
     : 'Room unavailable');
   const batch = entry.batch ? `Batch: ${entry.batch}${role === 'student' && studentBatch && entry.batch === studentBatch ? ' (Your batch)' : ''}` : '';
-  const secondLine = role === 'faculty' ? section : (entry.facultyName || entry.faculty?.email || 'Faculty unavailable');
+  const secondLine = role === 'faculty'
+    ? (entry.facultyNames && entry.facultyNames.length > 1 ? `${section} (Co: ${entry.facultyName})` : section)
+    : (entry.facultyName || entry.faculty?.email || 'Faculty unavailable');
   return [subject, secondLine, batch, room].filter(Boolean);
 }
 

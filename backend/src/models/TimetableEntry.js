@@ -89,6 +89,9 @@ timetableEntrySchema.pre('validate', async function calculateAndValidateSlots() 
   if (Number.isInteger(this.startSlot) && Number.isInteger(this.slotCount) && this.startSlot + this.slotCount - 1 > 7) {
     this.invalidate('startSlot', 'The entry must fit within the college timetable');
   }
+  if (subjectKind === 'theory' && this.faculties && this.faculties.length > 1) {
+    this.invalidate('faculties', 'Theory entries can only have a single faculty member');
+  }
   if (subjectKind === 'theory' && this.batch !== null && this.batch !== undefined) {
     this.invalidate('batch', 'Theory entries must apply to the whole section');
   }
