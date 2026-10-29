@@ -1,490 +1,638 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import {
-  AlertTriangle, ArrowLeft, CheckCircle2, Download, FileSpreadsheet, FileText,
-  Loader2, Upload, X, XCircle,
+  X, Upload, Download, CheckCircle, AlertTriangle, XCircle,
+  FileSpreadsheet, ArrowLeft, RefreshCw, Layers, Check,
 } from 'lucide-react';
 import academicConfig from '../../../../shared/academicConfig.json';
-import { getDepartmentLabel } from '../../constants/departments';
+import { DEPARTMENT_OPTIONS } from '../../constants/departments';
 
 const SESSIONS = academicConfig.ACADEMIC_YEARS;
-const BRANCHES = academicConfig.DEPARTMENTS;
-const YEARS = [1, 2, 3, 4];
+const YEARS = academicConfig.YEARS || [1, 2, 3, 4];
 const SEMESTERS_BY_YEAR = academicConfig.SEMESTERS_BY_YEAR;
-const MAX_FILE_SIZE = 5 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.pdf'];
 
-const fieldClass = 'w-full rounded-md border border-slate-200 bg-white px-2 py-1 text-xs text-slate-700 focus:border-primary-400 focus:outline-none';
-
-const statusBadge = (status) => {
-  if (status === 'error') {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-700"><XCircle className="h-3 w-3" />Error</span>;
-  }
-  if (status === 'warning') {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-700"><AlertTriangle className="h-3 w-3" />Warning</span>;
-  }
-  return <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700"><CheckCircle2 className="h-3 w-3" />Valid</span>;
-};
-
-const summarizeRows = (rows) => ({
-  total: rows.length,
-  valid: rows.filter((row) => row.status !== 'error').length,
-  warnings: rows.filter((row) => row.status === 'warning').length,
-  errors: rows.filter((row) => row.status === 'error').length,
-  duplicates: rows.filter((row) => row.duplicate).length,
-});
-
-const SummaryCard = ({ label, value, tone = 'slate' }) => {
-  const tones = {
-    slate: 'bg-slate-50 text-slate-700 border-slate-200',
-    emerald: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-    amber: 'bg-amber-50 text-amber-700 border-amber-200',
-    red: 'bg-red-50 text-red-700 border-red-200',
-    primary: 'bg-primary-50 text-primary-700 border-primary-200',
-  };
-  return (
-    <div className={`rounded-xl border px-4 py-3 ${tones[tone]}`}>
-      <p className="text-[11px] font-semibold uppercase tracking-wide opacity-75">{label}</p>
-      <p className="mt-1 text-2xl font-bold">{value}</p>
-    </div>
-  );
-};
-
-export default function SubjectImportModal({ session: initialSession, branch: initialBranch, onClose, onDone }) {
-  const [step, setStep] = useState('setup');
+export default function SubjectImportModal({
+  session: initialSession,
+  branch: initialBranch,
+  onClose,
+  onDone,
+}) {
   const [session, setSession] = useState(initialSession || SESSIONS[0]);
   const [branch, setBranch] = useState(initialBranch || '');
-  const [year, setYear] = useState(1);
-  const [semester, setSemester] = useState(1);
-  const [updateMode, setUpdateMode] = useState('skip');
+  const [year, setYear] = useState('1');
+  const [semester, setSemester] = useState('1');
+  const [updateMode, setUpdateMode] = useState('skip'); // 'skip' | 'update'
+
   const [file, setFile] = useState(null);
-  const [rows, setRows] = useState([]);
-  const [fileType, setFileType] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [result, setResult] = useState(null);
+  const [previewData, setPreviewData] = useState(null); // { summary, rows }
+  const [importResult, setImportResult] = useState(null);
 
-  const semesters = SEMESTERS_BY_YEAR[String(year)] || [];
-  const summary = useMemo(() => summarizeRows(rows), [rows]);
-  const selectionsComplete = Boolean(session && branch && year && semester);
+  // Available semesters based on selected year
+  const availableSemesters = useMemo(() => {
+    return SEMESTERS_BY_YEAR[String(year)] || [1, 2];
+  }, [year]);
 
-  const changeYear = (value) => {
-    const nextYear = Number(value);
-    setYear(nextYear);
-    const available = SEMESTERS_BY_YEAR[String(nextYear)] || [];
-    if (!available.includes(Number(semester))) setSemester(available[0] || 1);
+  const handleYearChange = (newYear) => {
+    setYear(newYear);
+    const sems = SEMESTERS_BY_YEAR[String(newYear)] || [1, 2];
+    setSemester(String(sems[0]));
   };
 
-  const handleFileChange = (event) => {
-    const selected = event.target.files?.[0] || null;
-    setError('');
-    if (!selected) {
-      setFile(null);
+  const handleDownloadTemplate = async () => {
+    try {
+      const response = await api.get('/admin/subjects/import/template', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', 'subject-lab-import-template.xlsx');
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch {
+      toast.error('Failed to download Excel template');
+    }
+  };
+
+  const handleFileChange = (e) => {
+    const selected = e.target.files?.[0];
+    if (!selected) return;
+
+    if (selected.size > 5 * 1024 * 1024) {
+      toast.error('File size exceeds 5 MB limit');
       return;
     }
-    const extension = `.${selected.name.split('.').pop().toLowerCase()}`;
-    if (!ALLOWED_EXTENSIONS.includes(extension)) {
-      setFile(null);
-      setError('Invalid file type. Upload an .xlsx, .xls, .csv or .pdf file.');
-      return;
-    }
-    if (selected.size > MAX_FILE_SIZE) {
-      setFile(null);
-      setError('File size limit exceeded. Maximum size is 5 MB.');
+    const ext = selected.name.split('.').pop()?.toLowerCase();
+    if (!['xlsx', 'xls', 'csv'].includes(ext)) {
+      toast.error('Please upload an .xlsx, .xls, or .csv file');
       return;
     }
     setFile(selected);
   };
 
-  const downloadTemplate = async () => {
-    try {
-      const response = await api.get('/admin/subjects/import/template', { responseType: 'blob' });
-      const url = URL.createObjectURL(response.data);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = 'subject-lab-import-template.xlsx';
-      link.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      toast.error('Could not download the import template.');
+  const handlePreviewUpload = async (e) => {
+    e.preventDefault();
+    if (!file) {
+      toast.error('Please select an Excel or CSV file to upload');
+      return;
     }
-  };
+    if (!session || !branch || !semester) {
+      toast.error('Please select Academic Year, Department, and Semester');
+      return;
+    }
 
-  const requestPreview = async () => {
-    if (!file || !selectionsComplete) return;
     setLoading(true);
-    setError('');
     try {
       const formData = new FormData();
       formData.append('file', file);
       formData.append('session', session);
       formData.append('branch', branch);
-      formData.append('year', String(year));
-      formData.append('semester', String(semester));
+      formData.append('semester', semester);
       formData.append('updateMode', updateMode);
-      const { data } = await api.post('/admin/subjects/import/preview', formData);
-      setRows(data.data.rows || []);
-      setFileType(data.data.fileType || '');
-      setStep('preview');
+
+      const { data } = await api.post('/admin/subjects/import/preview', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+
+      setPreviewData(data.data);
+      toast.success(`Parsed ${data.data.rows.length} rows`);
     } catch (err) {
-      const message = err.response?.data?.message || 'The file could not be processed.';
-      setError(message);
-      toast.error(message);
+      toast.error(err.response?.data?.message || 'Failed to parse import file');
     } finally {
       setLoading(false);
     }
   };
 
-  const updateRowValues = (index, field, value) => {
-    setRows((previous) => previous.map((row, rowIndex) => {
-      if (rowIndex !== index) return row;
-      const values = { ...row.values, [field]: value };
-      if (field === 'ltp') {
-        const parts = String(value).split(/[^0-9.]+/).filter(Boolean);
-        values.l = Number(parts[0] || 0);
-        values.t = Number(parts[1] || 0);
-        values.p = Number(parts[2] || 0);
-        values.ltp = `${values.l}-${values.t}-${values.p}`;
+  const handleRowChange = (index, field, value) => {
+    if (!previewData) return;
+    const updatedRows = [...previewData.rows];
+    const target = { ...updatedRows[index], [field]: value };
+
+    // Auto recalculations on change
+    if (field === 'type') {
+      const cr = Number(target.credits) || 0;
+      if (value === 'lab') {
+        target.l = 0; target.t = 0; target.p = cr * 2;
+      } else {
+        target.l = cr; target.t = 0; target.p = 0;
       }
-      if (field === 'semester') values.semester = value === '' ? '' : Number(value);
-      if (field === 'year') values.year = value === '' ? '' : Number(value);
-      return {
-        ...row,
-        values,
-        status: 'warning',
-        action: 'create',
-        duplicate: false,
-        errors: [],
-        warnings: ['This row was edited locally. It will be revalidated when the import is confirmed.'],
-      };
-    }));
+    } else if (field === 'int' || field === 'ext') {
+      const intVal = Number(field === 'int' ? value : target.int) || 0;
+      const extVal = Number(field === 'ext' ? value : target.ext) || 0;
+      target.total = intVal + extVal;
+    } else if (field === 'credits') {
+      const cr = Number(value) || 0;
+      if (target.type === 'lab') {
+        target.p = cr * 2;
+      } else {
+        target.l = cr;
+      }
+    }
+
+    // Refresh row validation
+    const errors = [];
+    const warnings = [...(target.warnings || []).filter(w => !w.includes('Type conflict') && !w.includes('TOTAL marks'))];
+
+    if (!String(target.code || '').trim()) errors.push('Course code is required');
+    if (!String(target.name || '').trim()) errors.push('Course nomenclature is required');
+    if (Number(target.int) < 0) errors.push('INT marks cannot be negative');
+    if (Number(target.ext) < 0) errors.push('EXT marks cannot be negative');
+    if (Number(target.credits) < 0) errors.push('Credits cannot be negative');
+
+    target.errors = errors;
+    target.status = errors.length > 0 ? 'error' : (warnings.length > 0 ? 'warning' : 'valid');
+
+    updatedRows[index] = target;
+
+    const summary = {
+      total: updatedRows.length,
+      valid: updatedRows.filter(r => r.status === 'valid').length,
+      warnings: updatedRows.filter(r => r.status === 'warning').length,
+      errors: updatedRows.filter(r => r.status === 'error').length,
+      duplicates: updatedRows.filter(r => r.errors?.some(e => e.includes('Duplicate'))).length,
+    };
+
+    setPreviewData({ summary, rows: updatedRows });
   };
 
-  const confirmImport = async () => {
+  const handleConfirmImport = async () => {
+    if (!previewData || previewData.rows.length === 0) return;
+
+    // Filter rows that are free of fatal errors
+    const rowsToImport = previewData.rows.filter(r => r.status !== 'error');
+    if (rowsToImport.length === 0) {
+      toast.error('No valid or warning rows available to import. Please resolve the errors.');
+      return;
+    }
+
     setLoading(true);
-    setError('');
     try {
       const { data } = await api.post('/admin/subjects/import/confirm', {
         session,
         branch,
-        year,
         semester,
         updateMode,
-        rows: rows.map((row) => ({ rowNumber: row.rowNumber, values: row.values })),
+        rows: rowsToImport,
       });
-      setResult(data.data);
-      setStep('result');
-      toast.success('Import completed.');
+
+      setImportResult(data.data);
+      toast.success(data.data.message || 'Import completed successfully');
     } catch (err) {
-      const message = err.response?.data?.message || 'The import could not be completed.';
-      setError(message);
-      toast.error(message);
+      toast.error(err.response?.data?.message || 'Confirm import failed');
     } finally {
       setLoading(false);
     }
   };
 
-  const finish = () => {
-    onDone?.({ session, branch });
-  };
-
-  const resetToSetup = () => {
-    setStep('setup');
-    setRows([]);
-    setResult(null);
-    setError('');
-  };
+  const canUpload = Boolean(session && branch && year && semester);
+  const savableRowCount = previewData?.rows.filter(r => r.status !== 'error').length || 0;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-      <div className="flex max-h-[94vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl my-8 overflow-hidden flex flex-col max-h-[90vh]">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-slate-50/50">
           <div className="flex items-center gap-3">
-            <div className="rounded-xl bg-primary-100 p-2 text-primary-700">
-              <Upload className="h-5 w-5" />
+            <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center text-primary-700">
+              <Upload className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="font-semibold text-slate-800">Import Subjects and Labs</h2>
+              <h2 className="text-lg font-bold text-slate-800">Import Subjects &amp; Labs</h2>
               <p className="text-xs text-slate-500">
-                Preview and validate the file before saving. Existing manual add, edit and delete flows are unchanged.
+                Upload 7-column scheme file (.xlsx, .xls, .csv) for a single semester
               </p>
             </div>
           </div>
-          <button onClick={onClose} className="rounded-lg p-1 text-slate-400 hover:text-slate-600" aria-label="Close import dialog">
-            <X className="h-5 w-5" />
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+          >
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          {step === 'setup' && (
-            <div className="space-y-5">
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
-                <div>
-                  <label className="label">Academic Year *</label>
-                  <select className="input" value={session} onChange={(event) => setSession(event.target.value)}>
-                    {SESSIONS.map((value) => <option key={value} value={value}>{value}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Department *</label>
-                  <select className="input" value={branch} onChange={(event) => setBranch(event.target.value)}>
-                    <option value="">Select Department</option>
-                    {BRANCHES.map((value) => <option key={value} value={value}>{getDepartmentLabel(value)}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Year *</label>
-                  <select className="input" value={year} onChange={(event) => changeYear(event.target.value)}>
-                    {YEARS.map((value) => <option key={value} value={value}>Year {value}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Semester *</label>
-                  <select className="input" value={semester} onChange={(event) => setSemester(Number(event.target.value))}>
-                    {semesters.map((value) => <option key={value} value={value}>Semester {value}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <div>
-                  <label className="label">Existing Records</label>
-                  <select className="input" value={updateMode} onChange={(event) => setUpdateMode(event.target.value)}>
-                    <option value="skip">Skip existing</option>
-                    <option value="update">Update existing</option>
-                  </select>
-                  <p className="mt-1 text-xs text-slate-500">
-                    This controls codes that already exist in the selected academic year, department and semester.
-                  </p>
-                </div>
-                <div className="flex items-end">
-                  <button type="button" onClick={downloadTemplate} className="btn-secondary">
-                    <Download className="h-4 w-4" /> Download Excel Template
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50/60 p-5">
-                <div className="flex flex-col items-center justify-center gap-2 text-center">
-                  <FileSpreadsheet className="h-8 w-8 text-primary-500" />
-                  <p className="text-sm font-semibold text-slate-700">Upload the completed import file</p>
-                  <p className="text-xs text-slate-500">Accepted formats: .xlsx, .xls, .csv and .pdf. Maximum size: 5 MB.</p>
-                  <input
-                    type="file"
-                    accept=".xlsx,.xls,.csv,.pdf"
-                    onChange={handleFileChange}
-                    disabled={!selectionsComplete || loading}
-                    className="mt-2 block w-full max-w-xl cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-600 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:opacity-60"
-                  />
-                  {!selectionsComplete && (
-                    <p className="text-xs text-slate-500">
-                      Select the academic year, department, year and semester before uploading a file.
-                    </p>
-                  )}
-                  {file && (
-                    <p className="text-xs text-slate-600">
-                      Selected file: <span className="font-medium">{file.name}</span> ({Math.ceil(file.size / 1024)} KB)
-                    </p>
-                  )}
-                  {file?.name.toLowerCase().endsWith('.pdf') && (
-                    <p className="text-xs text-amber-700">
-                      Text-based PDFs are supported. Scanned PDFs must be converted to Excel before import.
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              {error && (
-                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-                <p className="text-xs text-slate-500">
-                  Nothing is saved until the preview is reviewed and the import is confirmed.
-                </p>
-                <button
-                  type="button"
-                  onClick={requestPreview}
-                  disabled={!file || !selectionsComplete || loading}
-                  className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                  {loading ? 'Validating...' : 'Upload and Preview'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === 'preview' && (
-            <div className="space-y-5">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold text-slate-800">Import Preview</h3>
-                  <p className="text-xs text-slate-500">
-                    {session} · {getDepartmentLabel(branch)} · Year {year} · Semester {semester} · {fileType === 'pdf' ? 'PDF' : fileType === 'csv' ? 'CSV' : 'Excel'}
-                    {' · '}Existing records: {updateMode === 'update' ? 'Update' : 'Skip'}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => setStep('setup')} className="btn-secondary">
-                    <ArrowLeft className="h-4 w-4" /> Back
-                  </button>
+        {/* Content body */}
+        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+          {!previewData && !importResult && (
+            <>
+              {/* Step 1: Selection Scope */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    Step 1: Select Academic Scope
+                  </span>
                   <button
                     type="button"
-                    onClick={confirmImport}
-                    disabled={loading || summary.valid === 0}
-                    className="btn-primary disabled:cursor-not-allowed disabled:opacity-50"
+                    onClick={handleDownloadTemplate}
+                    className="inline-flex items-center gap-1.5 text-xs text-primary-600 hover:text-primary-700 font-medium hover:underline"
                   >
-                    {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
-                    {loading ? 'Importing...' : 'Confirm Import'}
+                    <Download className="w-3.5 h-3.5" /> Download Excel Template
                   </button>
                 </div>
-              </div>
 
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
-                <SummaryCard label="Total Rows" value={summary.total} />
-                <SummaryCard label="Valid Rows" value={summary.valid} tone="emerald" />
-                <SummaryCard label="Warnings" value={summary.warnings} tone="amber" />
-                <SummaryCard label="Errors" value={summary.errors} tone="red" />
-                <SummaryCard label="Duplicates" value={summary.duplicates} tone="primary" />
-              </div>
-
-              <div className="rounded-lg border border-primary-100 bg-primary-50 px-4 py-3 text-xs text-primary-800">
-                Only valid and warning rows will be imported. Rows with errors will be skipped and reported.
-                For PDF imports, you may correct a value directly in the preview before confirming.
-              </div>
-
-              {error && (
-                <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                  <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
-                  <span>{error}</span>
-                </div>
-              )}
-
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="min-w-[1500px] w-full text-xs">
-                  <thead className="bg-slate-50 text-left text-[10px] uppercase tracking-wide text-slate-500">
-                    <tr>
-                      {['Row', 'Status', 'Code', 'Subject Name', 'Type', 'L-T-P', 'Credits', 'Theory End', 'CW', 'Practical End', 'SW', 'Total', 'Faculty', 'Semester', 'Year', 'Syllabus', 'Messages'].map((header) => (
-                        <th key={header} className="whitespace-nowrap px-2 py-2 font-semibold">{header}</th>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div>
+                    <label className="label">Academic Session *</label>
+                    <select
+                      value={session}
+                      onChange={(e) => setSession(e.target.value)}
+                      className="input"
+                    >
+                      {SESSIONS.map((s) => (
+                        <option key={s} value={s}>{s}</option>
                       ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="label">Department / Branch *</label>
+                    <select
+                      value={branch}
+                      onChange={(e) => setBranch(e.target.value)}
+                      className="input"
+                    >
+                      <option value="">Select Department</option>
+                      {DEPARTMENT_OPTIONS.map((dept) => (
+                        <option key={dept.value} value={dept.value}>{dept.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="label">Year *</label>
+                    <select
+                      value={year}
+                      onChange={(e) => handleYearChange(e.target.value)}
+                      className="input"
+                    >
+                      {YEARS.map((y) => (
+                        <option key={y} value={y}>Year {['I', 'II', 'III', 'IV'][y - 1] || y}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="label">Semester *</label>
+                    <select
+                      value={semester}
+                      onChange={(e) => setSemester(e.target.value)}
+                      className="input"
+                    >
+                      {availableSemesters.map((sem) => (
+                        <option key={sem} value={sem}>Semester {sem}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* Existing Records Mode */}
+                <div className="pt-2 border-t border-slate-200/80 flex flex-wrap items-center gap-6">
+                  <span className="text-xs font-semibold text-slate-700">Existing records:</span>
+                  <label className="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="updateMode"
+                      value="skip"
+                      checked={updateMode === 'skip'}
+                      onChange={() => setUpdateMode('skip')}
+                      className="text-primary-600 focus:ring-primary-500"
+                    />
+                    <span>Skip existing (default)</span>
+                  </label>
+                  <label className="inline-flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                    <input
+                      type="radio"
+                      name="updateMode"
+                      value="update"
+                      checked={updateMode === 'update'}
+                      onChange={() => setUpdateMode('update')}
+                      className="text-primary-600 focus:ring-primary-500"
+                    />
+                    <span>Update existing (preserves internal IDs)</span>
+                  </label>
+                </div>
+              </div>
+
+              {/* Step 2: Upload Zone */}
+              <form onSubmit={handlePreviewUpload} className="space-y-4">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                  Step 2: Upload Scheme File
+                </span>
+
+                <div
+                  className={`border-2 border-dashed rounded-2xl p-8 text-center transition-colors ${
+                    !canUpload
+                      ? 'border-slate-200 bg-slate-50/50 opacity-60 cursor-not-allowed'
+                      : file
+                      ? 'border-primary-400 bg-primary-50/30'
+                      : 'border-slate-300 hover:border-primary-400 hover:bg-slate-50/50 cursor-pointer'
+                  }`}
+                >
+                  <input
+                    type="file"
+                    id="import-file-input"
+                    accept=".xlsx,.xls,.csv"
+                    disabled={!canUpload}
+                    onChange={handleFileChange}
+                    className="hidden"
+                  />
+                  <label
+                    htmlFor={canUpload ? 'import-file-input' : undefined}
+                    className="flex flex-col items-center justify-center cursor-pointer"
+                  >
+                    <FileSpreadsheet className={`w-12 h-12 mb-3 ${file ? 'text-primary-600' : 'text-slate-400'}`} />
+                    {file ? (
+                      <div className="space-y-1">
+                        <p className="font-semibold text-slate-800 text-sm">{file.name}</p>
+                        <p className="text-xs text-slate-500">{(file.size / 1024).toFixed(1)} KB</p>
+                        <span className="inline-block mt-2 text-xs text-primary-600 hover:underline">
+                          Click to select a different file
+                        </span>
+                      </div>
+                    ) : (
+                      <div className="space-y-1">
+                        <p className="font-semibold text-slate-700 text-sm">
+                          {canUpload ? 'Click or drag file here to upload' : 'Complete scope selection above to enable upload'}
+                        </p>
+                        <p className="text-xs text-slate-400">Supported formats: .xlsx, .xls, .csv (Maximum 5 MB, 500 rows)</p>
+                      </div>
+                    )}
+                  </label>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={onClose}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!canUpload || !file || loading}
+                    className="btn-primary inline-flex items-center gap-2"
+                  >
+                    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Layers className="w-4 h-4" />}
+                    Upload &amp; Preview
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
+
+          {/* Preview Section */}
+          {previewData && !importResult && (
+            <div className="space-y-4">
+              {/* Summary Cards */}
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-center">
+                  <p className="text-xs text-slate-500">Total Rows</p>
+                  <p className="text-lg font-bold text-slate-800">{previewData.summary.total}</p>
+                </div>
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
+                  <p className="text-xs text-emerald-600">Valid</p>
+                  <p className="text-lg font-bold text-emerald-700">{previewData.summary.valid}</p>
+                </div>
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-center">
+                  <p className="text-xs text-amber-600">Warnings</p>
+                  <p className="text-lg font-bold text-amber-700">{previewData.summary.warnings}</p>
+                </div>
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-center">
+                  <p className="text-xs text-red-600">Errors</p>
+                  <p className="text-lg font-bold text-red-700">{previewData.summary.errors}</p>
+                </div>
+                <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-center col-span-2 sm:col-span-1">
+                  <p className="text-xs text-purple-600">Duplicates</p>
+                  <p className="text-lg font-bold text-purple-700">{previewData.summary.duplicates}</p>
+                </div>
+              </div>
+
+              {/* Informative Note */}
+              <div className="flex items-center justify-between text-xs text-slate-500 bg-slate-50 p-2.5 rounded-lg border border-slate-200">
+                <span>
+                  Target: <strong>{branch}</strong> · Semester <strong>{semester}</strong> ({session}) · Mode: <strong>{updateMode === 'update' ? 'Update Existing' : 'Skip Existing'}</strong>
+                </span>
+                <span>Cells in the preview table below are editable prior to confirming.</span>
+              </div>
+
+              {/* Preview Table */}
+              <div className="border border-slate-200 rounded-xl overflow-x-auto max-h-[46vh]">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-100 sticky top-0 z-10 border-b border-slate-200">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600">Status</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600">Code</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600 min-w-[180px]">Nomenclature</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600">Type</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600 w-20">L-T-P</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600 w-16">INT</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600 w-16">EXT</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600 w-16">TOTAL</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600 w-16">Credits</th>
+                      <th className="px-3 py-2 text-left font-semibold text-slate-600 min-w-[140px]">Program &amp; Branch</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {rows.map((row, index) => (
-                      <tr key={`${row.rowNumber}-${index}`} className="border-t border-slate-100 align-top">
-                        <td className="px-2 py-2 text-slate-500">{row.rowNumber}</td>
-                        <td className="px-2 py-2">{statusBadge(row.status)}</td>
-                        <td className="px-2 py-2">
-                          <input className={`${fieldClass} min-w-[92px] font-mono uppercase`} value={row.values.code ?? ''} onChange={(event) => updateRowValues(index, 'code', event.target.value)} />
-                        </td>
-                        <td className="px-2 py-2">
-                          <input className={`${fieldClass} min-w-[210px]`} value={row.values.name ?? ''} onChange={(event) => updateRowValues(index, 'name', event.target.value)} />
-                        </td>
-                        <td className="px-2 py-2">
-                          <select className={`${fieldClass} min-w-[90px]`} value={row.values.type || 'subject'} onChange={(event) => updateRowValues(index, 'type', event.target.value)}>
-                            <option value="subject">Subject</option>
-                            <option value="lab">Lab</option>
-                          </select>
-                        </td>
-                        <td className="px-2 py-2">
-                          <input className={`${fieldClass} min-w-[64px] text-center`} value={row.values.ltp ?? ''} onChange={(event) => updateRowValues(index, 'ltp', event.target.value)} />
-                        </td>
-                        {['credits', 'theoryEnd', 'cw', 'practicalEnd', 'sw', 'total'].map((field) => (
-                          <td key={field} className="px-2 py-2">
-                            <input type="number" min="0" className={`${fieldClass} w-[70px] tabular-nums`} value={row.values[field] ?? ''} onChange={(event) => updateRowValues(index, field, event.target.value === '' ? '' : Number(event.target.value))} />
+                  <tbody className="divide-y divide-slate-100">
+                    {previewData.rows.map((row, idx) => {
+                      const isError = row.status === 'error';
+                      const isWarning = row.status === 'warning';
+                      const issues = [...(row.errors || []), ...(row.warnings || [])];
+
+                      return (
+                        <tr
+                          key={idx}
+                          className={`hover:bg-slate-50/80 transition-colors ${
+                            isError ? 'bg-red-50/40' : isWarning ? 'bg-amber-50/30' : ''
+                          }`}
+                        >
+                          {/* Status */}
+                          <td className="px-3 py-2 align-top whitespace-nowrap">
+                            <div className="flex flex-col gap-0.5">
+                              {isError ? (
+                                <span className="inline-flex items-center gap-1 font-semibold text-red-700">
+                                  <XCircle className="w-3.5 h-3.5 text-red-500" /> Error
+                                </span>
+                              ) : isWarning ? (
+                                <span className="inline-flex items-center gap-1 font-semibold text-amber-700">
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Warning
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 font-semibold text-emerald-700">
+                                  <CheckCircle className="w-3.5 h-3.5 text-emerald-500" /> Valid
+                                </span>
+                              )}
+                              {issues.length > 0 && (
+                                <span className="text-[10px] text-slate-500 max-w-xs leading-tight" title={issues.join('\n')}>
+                                  {issues[0]}
+                                </span>
+                              )}
+                            </div>
                           </td>
-                        ))}
-                        <td className="px-2 py-2">
-                          <input className={`${fieldClass} min-w-[190px]`} value={row.values.faculty ?? ''} onChange={(event) => updateRowValues(index, 'faculty', event.target.value)} placeholder="Names or emails" />
-                        </td>
-                        <td className="px-2 py-2">
-                          <input type="number" min="1" max="8" className={`${fieldClass} w-[64px]`} value={row.values.semester ?? ''} onChange={(event) => updateRowValues(index, 'semester', event.target.value)} />
-                        </td>
-                        <td className="px-2 py-2">
-                          <input type="number" min="1" max="4" className={`${fieldClass} w-[64px]`} value={row.values.year ?? ''} onChange={(event) => updateRowValues(index, 'year', event.target.value)} />
-                        </td>
-                        <td className="px-2 py-2">
-                          <input className={`${fieldClass} min-w-[180px]`} value={row.values.syllabus ?? ''} onChange={(event) => updateRowValues(index, 'syllabus', event.target.value)} />
-                        </td>
-                        <td className="px-2 py-2">
-                          <div className="min-w-[260px] space-y-1">
-                            {row.errors.map((message, messageIndex) => (
-                              <p key={`error-${messageIndex}`} className="flex gap-1 text-red-700"><XCircle className="mt-0.5 h-3 w-3 flex-shrink-0" />{message}</p>
-                            ))}
-                            {row.warnings.map((message, messageIndex) => (
-                              <p key={`warning-${messageIndex}`} className="flex gap-1 text-amber-700"><AlertTriangle className="mt-0.5 h-3 w-3 flex-shrink-0" />{message}</p>
-                            ))}
-                            {!row.errors.length && !row.warnings.length && <span className="text-emerald-700">Ready to import.</span>}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
+
+                          {/* Code */}
+                          <td className="px-2 py-1.5 align-top">
+                            <input
+                              type="text"
+                              value={row.code}
+                              onChange={(e) => handleRowChange(idx, 'code', e.target.value.toUpperCase())}
+                              className="input text-xs py-1 px-2 font-mono font-bold"
+                            />
+                          </td>
+
+                          {/* Name */}
+                          <td className="px-2 py-1.5 align-top">
+                            <input
+                              type="text"
+                              value={row.name}
+                              onChange={(e) => handleRowChange(idx, 'name', e.target.value)}
+                              className="input text-xs py-1 px-2"
+                            />
+                          </td>
+
+                          {/* Type */}
+                          <td className="px-2 py-1.5 align-top">
+                            <select
+                              value={row.type}
+                              onChange={(e) => handleRowChange(idx, 'type', e.target.value)}
+                              className="input text-xs py-1 px-2 font-semibold"
+                            >
+                              <option value="theory">Subject</option>
+                              <option value="lab">Lab</option>
+                            </select>
+                          </td>
+
+                          {/* L-T-P */}
+                          <td className="px-2 py-1.5 align-top">
+                            <input
+                              type="text"
+                              value={`${row.l}-${row.t}-${row.p}`}
+                              onChange={(e) => {
+                                const parts = e.target.value.split('-').map(p => Number(p) || 0);
+                                handleRowChange(idx, 'l', parts[0] || 0);
+                                handleRowChange(idx, 't', parts[1] || 0);
+                                handleRowChange(idx, 'p', parts[2] || 0);
+                              }}
+                              className="input text-xs py-1 px-1.5 font-mono text-center"
+                              title="Format: L-T-P"
+                            />
+                          </td>
+
+                          {/* INT */}
+                          <td className="px-2 py-1.5 align-top">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.int}
+                              onChange={(e) => handleRowChange(idx, 'int', e.target.value)}
+                              className="input text-xs py-1 px-1.5 text-right font-mono"
+                            />
+                          </td>
+
+                          {/* EXT */}
+                          <td className="px-2 py-1.5 align-top">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.ext}
+                              onChange={(e) => handleRowChange(idx, 'ext', e.target.value)}
+                              className="input text-xs py-1 px-1.5 text-right font-mono"
+                            />
+                          </td>
+
+                          {/* TOTAL */}
+                          <td className="px-3 py-2.5 align-top font-mono font-bold text-right text-slate-800">
+                            {row.total}
+                          </td>
+
+                          {/* Credits */}
+                          <td className="px-2 py-1.5 align-top">
+                            <input
+                              type="number"
+                              min="0"
+                              value={row.credits}
+                              onChange={(e) => handleRowChange(idx, 'credits', e.target.value)}
+                              className="input text-xs py-1 px-1.5 text-right font-mono font-semibold"
+                            />
+                          </td>
+
+                          {/* Program & Branch */}
+                          <td className="px-3 py-2.5 align-top text-slate-600 truncate max-w-xs" title={row.programAndBranch}>
+                            {row.programAndBranch || '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setPreviewData(null)}
+                  className="btn-secondary inline-flex items-center gap-1.5 text-xs"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" /> Re-upload File
+                </button>
+
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500">
+                    Ready to save: <strong>{savableRowCount}</strong> row(s)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleConfirmImport}
+                    disabled={savableRowCount === 0 || loading}
+                    className="btn-primary inline-flex items-center gap-2 text-xs"
+                  >
+                    {loading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    Confirm Import
+                  </button>
+                </div>
               </div>
             </div>
           )}
 
-          {step === 'result' && result && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="font-semibold text-slate-800">Import Result</h3>
-                <p className="text-xs text-slate-500">
-                  {session} · {getDepartmentLabel(branch)} · Year {year} · Semester {semester}
-                </p>
+          {/* Result Section */}
+          {importResult && (
+            <div className="space-y-6 py-4 text-center">
+              <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+                <CheckCircle className="w-8 h-8" />
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-slate-800">Import Successful</h3>
+                <p className="text-sm text-slate-600 max-w-md mx-auto">{importResult.message}</p>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                <SummaryCard label="Created" value={result.summary?.created || 0} tone="emerald" />
-                <SummaryCard label="Updated" value={result.summary?.updated || 0} tone="primary" />
-                <SummaryCard label="Skipped" value={result.summary?.skipped || 0} tone="amber" />
-                <SummaryCard label="Errors in File" value={result.summary?.errors || 0} tone="red" />
+              <div className="flex justify-center gap-4 max-w-sm mx-auto">
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex-1 text-center">
+                  <p className="text-xs text-emerald-600 font-semibold">Created</p>
+                  <p className="text-xl font-extrabold text-emerald-700">{importResult.created}</p>
+                </div>
+                <div className="p-3 bg-primary-50 border border-primary-200 rounded-xl flex-1 text-center">
+                  <p className="text-xs text-primary-600 font-semibold">Updated</p>
+                  <p className="text-xl font-extrabold text-primary-700">{importResult.updated}</p>
+                </div>
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex-1 text-center">
+                  <p className="text-xs text-slate-500 font-semibold">Skipped</p>
+                  <p className="text-xl font-extrabold text-slate-700">{importResult.skipped}</p>
+                </div>
               </div>
 
-              <div className="overflow-hidden rounded-xl border border-slate-200">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2 font-semibold">Row</th>
-                      <th className="px-3 py-2 font-semibold">Code</th>
-                      <th className="px-3 py-2 font-semibold">Result</th>
-                      <th className="px-3 py-2 font-semibold">Reason</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(result.results || []).map((item, index) => (
-                      <tr key={`${item.rowNumber}-${index}`} className="border-t border-slate-100">
-                        <td className="px-3 py-2 text-slate-500">{item.rowNumber}</td>
-                        <td className="px-3 py-2 font-mono text-xs text-slate-700">{item.code}</td>
-                        <td className="px-3 py-2">
-                          <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                            item.action === 'created'
-                              ? 'bg-emerald-100 text-emerald-700'
-                              : item.action === 'updated'
-                                ? 'bg-primary-100 text-primary-700'
-                                : 'bg-amber-100 text-amber-700'
-                          }`}>
-                            {item.action}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-slate-600">{item.reason || '—'}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="flex items-center justify-between border-t border-slate-100 pt-4">
-                <button type="button" onClick={resetToSetup} className="btn-secondary">
-                  <FileText className="h-4 w-4" /> Import Another File
-                </button>
-                <button type="button" onClick={finish} className="btn-primary">
-                  <CheckCircle2 className="h-4 w-4" /> Done
+              <div className="pt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    if (onDone) onDone();
+                  }}
+                  className="btn-primary px-8"
+                >
+                  Done
                 </button>
               </div>
             </div>

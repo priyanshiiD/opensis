@@ -3,10 +3,11 @@ import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import {
   Plus, Pencil, Trash2, Copy, FileText, X, ChevronDown, ChevronRight, Eye,
-  BookOpen, FlaskConical, UserCheck, Download, GraduationCap, Lock, Globe,
+  BookOpen, FlaskConical, UserCheck, Download, GraduationCap, Lock, Globe, Upload,
 } from 'lucide-react';
 import academicConfig from '../../../../shared/academicConfig.json';
 import { departmentMatches, getDepartmentLabel } from '../../constants/departments';
+import SubjectImportModal from './SubjectImportModal';
 
 const BRANCHES       = academicConfig.DEPARTMENTS;
 const SESSIONS       = academicConfig.ACADEMIC_YEARS;
@@ -407,7 +408,7 @@ const SemesterSection = ({ sem, subjects, labs, onAdd, onEdit, onDelete, onViewS
             <table className="w-full text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
-                  {['Code', 'Subject Name', 'L-T-P', 'Cr', 'Th.End', 'CW', 'Pr.End', 'SW', 'Total', 'Faculty', 'Syllabus', 'Actions'].map(h => (
+                  {['Course Code', 'Course Nomenclature', 'INT', 'EXT', 'TOTAL', 'CREDITS', 'Program and Branch', 'Faculty', 'Actions'].map(h => (
                     <th key={h} className="text-left px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -416,7 +417,10 @@ const SemesterSection = ({ sem, subjects, labs, onAdd, onEdit, onDelete, onViewS
                 {allRows.map((item, i) => {
                   const isLab = item._kind === 'lab';
                   const faculty = item.facultyList || [];
-                  const totalMax = (item.theoryEndMax || 0) + (item.cwMax || 0) + (item.practicalEndMax || 0) + (item.swMax || 0);
+                  const intMarks = (item.cwMax || 0) + (item.swMax || 0);
+                  const extMarks = (item.theoryEndMax || 0) + (item.practicalEndMax || 0);
+                  const totalMarks = intMarks + extMarks;
+                  const programName = getDepartmentLabel(item.branch) || item.branch || '—';
                   return (
                     <tr key={item._id} className={`border-b border-slate-100 hover:bg-slate-50/80 ${isLab ? 'bg-emerald-50/30' : ''}`}>
                       <td className={`px-3 py-2.5 font-mono font-semibold text-xs whitespace-nowrap ${isLab ? 'text-emerald-700' : 'text-primary-700'}`}>
@@ -435,34 +439,24 @@ const SemesterSection = ({ sem, subjects, labs, onAdd, onEdit, onDelete, onViewS
                           )}
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 tabular-nums text-slate-600 whitespace-nowrap">
-                        {item.l ?? 0}-{item.t ?? 0}-{item.p ?? 0}
-                      </td>
+                      <td className="px-3 py-2.5 tabular-nums text-slate-700 whitespace-nowrap">{intMarks}</td>
+                      <td className="px-3 py-2.5 tabular-nums text-slate-700 whitespace-nowrap">{extMarks}</td>
+                      <td className="px-3 py-2.5 tabular-nums font-semibold text-slate-800 whitespace-nowrap">{totalMarks}</td>
                       <td className="px-3 py-2.5 font-semibold text-slate-700 whitespace-nowrap">{item.credits ?? 0}</td>
-                      <td className="px-3 py-2.5 tabular-nums text-slate-600">{item.theoryEndMax ?? '—'}</td>
-                      <td className="px-3 py-2.5 tabular-nums text-slate-600">{item.cwMax ?? '—'}</td>
-                      <td className="px-3 py-2.5 tabular-nums text-slate-600">{item.practicalEndMax ?? '—'}</td>
-                      <td className="px-3 py-2.5 tabular-nums text-slate-600">{item.swMax ?? '—'}</td>
-                      <td className="px-3 py-2.5 tabular-nums font-semibold text-slate-800 whitespace-nowrap">{totalMax || '—'}</td>
+                      <td className="px-3 py-2.5 text-slate-600 text-xs whitespace-nowrap">{programName}</td>
                       <td className="px-3 py-2.5 max-w-[140px]">
                         {faculty.length
                           ? <span className="text-slate-700 text-xs">{faculty.map(f => `${f.firstName} ${f.lastName}`).join(', ')}</span>
                           : <span className="text-slate-400 italic text-xs flex items-center gap-1"><UserCheck className="w-3 h-3" />Unassigned</span>}
                       </td>
                       <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-2">
                           {item.syllabusFile && (
                             <a href={item.syllabusFile} target="_blank" rel="noreferrer"
                               className="text-primary-600 hover:text-primary-700" title="Syllabus file">
                               <Download className="w-3.5 h-3.5" />
                             </a>
                           )}
-                          {item.syllabusText && <span className="badge-blue text-[9px]">Text</span>}
-                          {!item.syllabusFile && !item.syllabusText && <span className="text-slate-300 text-xs">—</span>}
-                        </div>
-                      </td>
-                      <td className="px-3 py-2.5">
-                        <div className="flex items-center gap-2">
                           <button onClick={() => onViewStudents && onViewStudents(item._kind, item._id, item.name)}
                             className="text-primary-400 hover:text-primary-600 transition-colors" title="View students">
                             <Eye className="w-3.5 h-3.5" />
@@ -739,6 +733,7 @@ export default function AdminSubjects() {
   const [studentsModal, setStudentsModal] = useState(null);   // NEW STATE
   const [copyOpen, setCopyOpen] = useState(false);
   const [commonModal, setCommonModal] = useState(null);
+  const [importOpen, setImportOpen] = useState(false);
 
   // Load faculty once
   useEffect(() => {
@@ -849,6 +844,28 @@ export default function AdminSubjects() {
   const totalLabs     = items.labs.length;
   const totalCredits  = [...items.subjects, ...items.labs].reduce((s, x) => s + (x.credits || 0), 0);
 
+  const handleExportExcel = async () => {
+    if (!session || !branch) {
+      toast.error('Select an academic session and department to export');
+      return;
+    }
+    try {
+      const qs = `session=${encodeURIComponent(session)}&branch=${encodeURIComponent(branch)}`;
+      const response = await api.get(`/admin/subjects/export?${qs}`, { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `Scheme_${branch}_${session}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      toast.success('Scheme exported to Excel');
+    } catch {
+      toast.error('Failed to export scheme to Excel');
+    }
+  };
+
   return (
     <div>
       {/* Page header */}
@@ -858,6 +875,21 @@ export default function AdminSubjects() {
           <p className="text-slate-500 text-sm mt-0.5">Design the academic scheme — session-wise, department-wise</p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => setImportOpen(true)}
+            className="btn-secondary"
+            title="Import subjects and labs from Excel/CSV"
+          >
+            <Upload className="w-4 h-4" /> Import
+          </button>
+          <button
+            onClick={handleExportExcel}
+            disabled={!session || !branch}
+            className="btn-secondary"
+            title="Export subjects and labs to Excel"
+          >
+            <Download className="w-4 h-4" /> Export Excel
+          </button>
           <button onClick={() => setCopyOpen(true)} className="btn-secondary">
             <Copy className="w-4 h-4" /> Copy Scheme
           </button>
@@ -966,6 +998,18 @@ export default function AdminSubjects() {
           onDone={(toSession) => {
             setCopyOpen(false);
             setSession(toSession);
+          }}
+        />
+      )}
+      {/* Subject and lab import modal */}
+      {importOpen && (
+        <SubjectImportModal
+          session={session}
+          branch={branch}
+          onClose={() => setImportOpen(false)}
+          onDone={() => {
+            setImportOpen(false);
+            load();
           }}
         />
       )}

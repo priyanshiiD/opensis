@@ -153,7 +153,24 @@ fetched again.
   current-term default and an "All terms" option
 - Notices
 
+---
 
+## Subject and Lab Import
+
+Admin users can import subjects and labs from the **Scheme of Subjects** page using
+the **Import** button. The import supports `.xlsx`, `.xls`, and `.csv` files (up to 5 MB and 500 rows per file) and operates on a 7-column scheme format:
+
+- `course_code` (unique within selected academic year, department, and semester)
+- `course_nomenclature` (subject or lab title)
+- `INT` (internal / continuous evaluation marks)
+- `EXT` (external / end-semester marks)
+- `TOTAL` (sum of INT + EXT)
+- `CREDITS` (course credits)
+- `Name of program and branch(SGSITS)` (program description)
+
+The import runs in a two-step preview and confirmation workflow. In the preview step, rows are validated, type inference is applied, cell values can be corrected, and duplicates or conflicts are flagged. When selecting **Update existing**, existing records are updated while strictly preserving their internal MongoDB `_id` references to protect timetable entries. Users can also export scheme data in the 7-column format via the **Export Excel** button.
+
+---
 
 ## Session/Term-Aware Modules
 

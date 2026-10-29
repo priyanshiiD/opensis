@@ -1,8 +1,8 @@
 const multer = require('multer');
 const path = require('path');
 
-const MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024;
-const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.csv', '.pdf'];
+const MAX_IMPORT_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+const ALLOWED_EXTENSIONS = ['.xlsx', '.xls', '.csv'];
 
 const importFileFilter = (req, file, cb) => {
   const extension = path.extname(file.originalname || '').toLowerCase();
@@ -10,7 +10,7 @@ const importFileFilter = (req, file, cb) => {
     cb(null, true);
     return;
   }
-  const error = new Error('Invalid file type. Upload an .xlsx, .xls, .csv or .pdf file.');
+  const error = new Error('Invalid file type. Please upload an .xlsx, .xls, or .csv file.');
   error.statusCode = 400;
   error.isImportUploadError = true;
   cb(error);

@@ -16,12 +16,14 @@ const timetableEntrySchema = new mongoose.Schema({
   subject: { type: mongoose.Schema.Types.ObjectId, refPath: 'subjectType', required: true },
   subjectType: { type: String, enum: ['Subject', 'Lab'], default: 'Subject' },
   faculty: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+  faculties: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   room: { type: mongoose.Schema.Types.ObjectId, ref: 'Room', required: true },
   academicYear: { type: String, required: true, trim: true },
   semester: { type: Number, required: true, min: 1, max: 8 },
 }, { timestamps: true });
 
 timetableEntrySchema.index({ academicYear: 1, faculty: 1, day: 1, slots: 1 }, { unique: true });
+timetableEntrySchema.index({ academicYear: 1, faculties: 1, day: 1 });
 timetableEntrySchema.index({ academicYear: 1, room: 1, day: 1, slots: 1 }, { unique: true });
 timetableEntrySchema.index({ section: 1, day: 1 });
 
@@ -32,8 +34,29 @@ timetableEntrySchema.pre('validate', async function calculateAndValidateSlots() 
     this.invalidate('subject', 'Subject does not exist');
   }
 
-  const faculty = await User.findOne({ _id: this.faculty, role: 'faculty', isActive: true }).select('_id').lean();
-  if (!faculty) this.invalidate('faculty', 'Faculty must reference an active faculty User');
+  if (Array.isArray(this.faculties) && this.faculties.length > 0) {
+    if (!this.faculty) {
+      this.faculty = this.faculties[0];
+    }
+  } else if (this.faculty) {
+    this.faculties = [this.faculty];
+  }
+
+  const facultyIds = Array.isArray(this.faculties) && this.faculties.length > 0
+    ? this.faculties
+    : (this.faculty ? [this.faculty] : []);
+
+  if (facultyIds.length === 0) {
+    this.invalidate('faculty', 'Faculty must reference an active faculty User');
+  } else {
+    const activeFacultyUsers = await User.find({ _id: { $in: facultyIds }, role: 'faculty', isActive: true }).select('_id').lean();
+    if (activeFacultyUsers.length !== facultyIds.length) {
+      this.invalidate('faculties', 'All faculties must reference active faculty Users');
+      if (!this.faculty || !activeFacultyUsers.some(u => u._id.toString() === this.faculty.toString())) {
+        this.invalidate('faculty', 'Faculty must reference an active faculty User');
+      }
+    }
+  }
 
   const section = await Section.findById(this.section).select('batches').lean();
   if (!section) {
