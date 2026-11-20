@@ -60,6 +60,7 @@ import FacultyMySubjects from "./pages/faculty/MySubjects";
 import FacultyAttendance from "./pages/faculty/Attendance";
 import FacultyAssignments from "./pages/faculty/Assignments";
 import FacultyMarks from "./pages/faculty/Marks";
+import FacultyMstMarks from "./pages/faculty/MstMarks";
 import FacultyNotices from "./pages/faculty/Notices";
 import FacultyFeedback from "./pages/faculty/Feedback";
 import FacultyTimetable from "./pages/faculty/MyTimetable";
@@ -101,6 +102,7 @@ const facultyNav = [
   { path: "/faculty/attendance", label: "Attendance", icon: ClipboardList },
   { path: "/faculty/assignments", label: "Assignments", icon: FileText },
   { path: "/faculty/marks", label: "Update Marks", icon: BarChart3 },
+  { path: "/faculty/notices", label: "Notices", icon: Bell },
   { path: "/faculty/timetable", label: "My Timetable", icon: Calendar },
   { path: "/faculty/complaints", label: "Complaints", icon: AlertCircle },
   { path: "/faculty/feedback", label: "Student Feedback", icon: MessageSquare },
@@ -172,6 +174,7 @@ function App() {
           <Route path="/faculty/attendance" element={<ProtectedRoute roles={["faculty"]}><FacultyLayout><FacultyAttendance /></FacultyLayout></ProtectedRoute>} />
           <Route path="/faculty/assignments" element={<ProtectedRoute roles={["faculty"]}><FacultyLayout><FacultyAssignments /></FacultyLayout></ProtectedRoute>} />
           <Route path="/faculty/marks" element={<ProtectedRoute roles={["faculty"]}><FacultyLayout><FacultyMarks /></FacultyLayout></ProtectedRoute>} />
+          <Route path="/faculty/mst-marks" element={<ProtectedRoute roles={["faculty"]}><FacultyLayout><FacultyMstMarks /></FacultyLayout></ProtectedRoute>} />
           <Route path="/faculty/schedule" element={<ProtectedRoute roles={["faculty"]}><FacultyLayout><FacultyFeedback /></FacultyLayout></ProtectedRoute>} />
           <Route path="/faculty/timetable" element={<ProtectedRoute roles={["faculty"]}><FacultyLayout><FacultyTimetable /></FacultyLayout></ProtectedRoute>} />
           <Route path="/faculty/complaints" element={<ProtectedRoute roles={["faculty"]}><FacultyLayout><FacultyComplaints /></FacultyLayout></ProtectedRoute>} />

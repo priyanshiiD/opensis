@@ -43,6 +43,9 @@ function EntryCard({ entry, mode, studentBatch, onClick }) {
     <button type="button" onClick={onClick} className={`min-w-0 flex-1 h-full overflow-hidden rounded-lg border px-2 py-2 text-left ${mode === 'student' && entry.batch && studentBatch && entry.batch !== studentBatch ? 'border-slate-200 bg-slate-50 opacity-60' : 'border-primary-100 bg-primary-50'} hover:border-primary-300 hover:bg-primary-100`}>
       <span className="block truncate text-xs font-bold text-primary-800">{entry.subject?.type === 'lab' && <span className="mr-1 rounded bg-amber-100 px-1 text-[9px] text-amber-800">LAB</span>}{subject}</span>
       <span className="block truncate text-[11px] text-slate-600">{mode === 'faculty' ? sectionLabel(entry.section) : faculty}</span>
+      {mode === 'faculty' && entry.facultyNames && entry.facultyNames.length > 1 && (
+        <span className="block truncate text-[10px] text-slate-500" title={entry.facultyName}>Co-faculty: {entry.facultyName}</span>
+      )}
       {batch && <span className="block text-[11px] font-medium text-slate-600">{batch}{mode === 'student' && entry.batch && entry.batch === studentBatch && <span className="ml-1 rounded bg-emerald-100 px-1 text-[9px] text-emerald-700">Your batch</span>}</span>}
       <span className="block break-words text-[11px] leading-tight text-slate-500">{room}</span>
     </button>

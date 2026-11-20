@@ -11,7 +11,14 @@ jest.mock('../src/models/Room', () => ({
   findById: jest.fn(),
 }));
 jest.mock('../src/models/Faculty', () => ({
+  find: jest.fn(),
   findOne: jest.fn(),
+}));
+jest.mock('../src/models/User', () => ({
+  find: jest.fn(),
+}));
+jest.mock('../src/models/FacultyTeachingAssignment', () => ({
+  find: jest.fn(),
 }));
 
 const TimetableEntry = require('../src/models/TimetableEntry');
@@ -19,6 +26,8 @@ const Subject = require('../src/models/Subject');
 const Section = require('../src/models/Section');
 const Room = require('../src/models/Room');
 const Faculty = require('../src/models/Faculty');
+const User = require('../src/models/User');
+const FacultyTeachingAssignment = require('../src/models/FacultyTeachingAssignment');
 const mongoose = require('mongoose');
 const { validateEntry, duplicateKeyMessage } = require('../src/services/timetableValidator');
 
@@ -51,6 +60,9 @@ const baseEntry = overrides => ({
 function arrange({ subjectType = 'theory', batches = ['A1', 'A2'], conflicts = [[], [], []] } = {}) {
   Subject.findById.mockReturnValue(queryWithResult({ type: subjectType, code: 'CS101', name: 'Algorithms', facultyId: 'faculty-profile' }));
   Faculty.findOne.mockReturnValue(queryWithResult({ _id: 'faculty-profile' }));
+  Faculty.find.mockReturnValue(queryWithResult([{ _id: 'faculty-profile', userId: 'faculty-1', firstName: 'Faculty', lastName: 'One' }]));
+  FacultyTeachingAssignment.find.mockReturnValue(queryWithResult([{ facultyId: 'faculty-profile' }]));
+  User.find.mockReturnValue(queryWithResult([{ _id: 'faculty-1', role: 'faculty', isActive: true }]));
   Section.findById.mockReturnValue(queryWithResult({ department: 'IT', year: 3, sectionName: 'A', batches }));
   Room.findById.mockReturnValue(queryWithResult({ building: 'ATC', roomNo: '101', name: 'ATC-101', type: 'classroom' }));
   conflicts.forEach(conflict => TimetableEntry.find.mockReturnValueOnce(conflictQueryWithResult(conflict)));
@@ -205,4 +217,102 @@ test('converts duplicate faculty and room keys into conflict messages', () => {
     .toBe('Faculty conflict: this faculty is already booked for an overlapping slot.');
   expect(duplicateKeyMessage({ code: 11000, keyPattern: { room: 1, day: 1, slots: 1 } }))
     .toBe('Room conflict: this room is already booked for an overlapping slot.');
+});
+
+test('allows a lab with multiple eligible faculty members', async () => {
+  arrange({ subjectType: 'lab' });
+  Faculty.find.mockReturnValue(queryWithResult([
+    { _id: 'faculty-profile-1', userId: 'faculty-1', firstName: 'Faculty', lastName: 'One' },
+    { _id: 'faculty-profile-2', userId: 'faculty-2', firstName: 'Faculty', lastName: 'Two' },
+  ]));
+  FacultyTeachingAssignment.find.mockReturnValue(queryWithResult([
+    { facultyId: 'faculty-profile-1' },
+    { facultyId: 'faculty-profile-2' },
+  ]));
+  User.find.mockReturnValue(queryWithResult([
+    { _id: 'faculty-1', role: 'faculty', isActive: true },
+    { _id: 'faculty-2', role: 'faculty', isActive: true },
+  ]));
+
+  const result = await validateEntry(baseEntry({
+    subjectType: 'Lab',
+    faculties: ['faculty-1', 'faculty-2'],
+    startSlot: 1,
+    slotCount: 2,
+    batch: 'A1',
+  }));
+  expect(result.valid).toBe(true);
+  expect(result.errors).toEqual([]);
+});
+
+test('rejects a theory entry when multiple faculty members are provided', async () => {
+  arrange({ subjectType: 'theory' });
+  const result = await validateEntry(baseEntry({
+    faculties: ['faculty-1', 'faculty-2'],
+  }));
+  expect(result.valid).toBe(false);
+  expect(result.errors).toContain('Theory rule: theory classes must have exactly one faculty member.');
+});
+
+test('detects a conflict when a secondary faculty member has an overlapping class', async () => {
+  arrange({
+    subjectType: 'lab',
+    conflicts: [[{
+      day: 1,
+      startSlot: 1,
+      slotCount: 2,
+      slots: [1, 2],
+      semester: 5,
+      faculty: { _id: 'faculty-2', email: 'prof2@college.edu', name: 'Prof Two' },
+      section: { department: 'IT', year: 3, sectionName: 'B' },
+      subject: { code: 'CS302' },
+    }], [], []],
+  });
+  Faculty.find.mockReturnValue(queryWithResult([
+    { _id: 'faculty-profile-1', userId: 'faculty-1', firstName: 'Faculty', lastName: 'One' },
+    { _id: 'faculty-profile-2', userId: 'faculty-2', firstName: 'Faculty', lastName: 'Two' },
+  ]));
+  FacultyTeachingAssignment.find.mockReturnValue(queryWithResult([
+    { facultyId: 'faculty-profile-1' },
+    { facultyId: 'faculty-profile-2' },
+  ]));
+  User.find.mockReturnValue(queryWithResult([
+    { _id: 'faculty-1', role: 'faculty', isActive: true },
+    { _id: 'faculty-2', role: 'faculty', isActive: true },
+  ]));
+
+  const result = await validateEntry(baseEntry({
+    subjectType: 'Lab',
+    faculties: ['faculty-1', 'faculty-2'],
+    startSlot: 1,
+    slotCount: 2,
+    batch: 'A1',
+  }));
+  expect(result.valid).toBe(false);
+  expect(result.errors.some(err => err.includes('Prof Two is already assigned'))).toBe(true);
+});
+
+test('rejects a lab faculty member who is not assigned in the academic scheme', async () => {
+  arrange({ subjectType: 'lab' });
+  Faculty.find.mockReturnValue(queryWithResult([
+    { _id: 'faculty-profile-1', userId: 'faculty-1', firstName: 'Faculty', lastName: 'One' },
+    { _id: 'unauthorized-profile', userId: 'unauthorized-user', firstName: 'Unauthorized', lastName: 'Faculty' },
+  ]));
+  FacultyTeachingAssignment.find.mockReturnValue(queryWithResult([
+    { facultyId: 'faculty-profile-1' },
+  ]));
+  User.find.mockReturnValue(queryWithResult([
+    { _id: 'faculty-1', role: 'faculty', isActive: true },
+    { _id: 'unauthorized-user', role: 'faculty', isActive: true },
+  ]));
+
+  const result = await validateEntry(baseEntry({
+    subjectType: 'Lab',
+    faculties: ['faculty-1', 'unauthorized-user'],
+    startSlot: 1,
+    slotCount: 2,
+    batch: 'A1',
+  }));
+  expect(result.valid).toBe(false);
+  expect(result.badRequestErrors.some(err => err.includes('is not assigned to this lab in the academic scheme'))).toBe(true);
 });

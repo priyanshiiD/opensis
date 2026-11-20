@@ -24,6 +24,7 @@ const slotLabel = slot => SLOT_OPTIONS.find(([value]) => value === Number(slot))
 const emptyForm = (day = 1, startSlot = 1) => ({
   subject: '',
   faculty: '',
+  faculties: [],
   building: '',
   roomNo: '',
   batch: '',
@@ -70,9 +71,17 @@ export default function ManageTimetable() {
     if (!selectedSection) return true;
     return (!subject.branch || subject.branch === selectedSection.department) && (!subject.semester || subject.semester === Number(semester));
   }), [options.subjects, selectedSection, semester]);
-  const assignedFaculty = selectedSubject?.facultyId
-    ? options.faculty.filter(faculty => String(faculty.facultyProfileId) === String(selectedSubject.facultyId))
-    : [];
+  const assignedFaculty = useMemo(() => {
+    if (!selectedSubject) return [];
+    if (selectedSubject.assignedFacultyUserIds && selectedSubject.assignedFacultyUserIds.length > 0) {
+      const allowedIds = new Set(selectedSubject.assignedFacultyUserIds.map(String));
+      return options.faculty.filter(faculty => allowedIds.has(String(faculty._id)));
+    }
+    if (selectedSubject.facultyId) {
+      return options.faculty.filter(faculty => String(faculty.facultyProfileId) === String(selectedSubject.facultyId));
+    }
+    return [];
+  }, [selectedSubject, options.faculty]);
   const facultyChoices = showAllFaculty ? options.faculty : assignedFaculty;
 
   const departments = academicConfig.DEPARTMENTS;
@@ -189,6 +198,7 @@ export default function ManageTimetable() {
   const openCreate = (day = 1, startSlot = 1) => {
     setEditingEntry(null);
     setConflicts([]);
+    setShowAllFaculty(false);
     setForm(emptyForm(day, startSlot));
     setShowModal(true);
   };
@@ -196,9 +206,14 @@ export default function ManageTimetable() {
   const openEdit = entry => {
     setEditingEntry(entry);
     setConflicts([]);
+    setShowAllFaculty(false);
+    const entryFaculties = Array.isArray(entry.faculties) && entry.faculties.length > 0
+      ? entry.faculties.map(f => f?._id || f)
+      : (entry.faculty ? [entry.faculty?._id || entry.faculty] : []);
     setForm({
       subject: entry.subject?._id || entry.subject,
-      faculty: entry.faculty?._id || entry.faculty,
+      faculty: entry.faculty?._id || entry.faculty || entryFaculties[0] || '',
+      faculties: entryFaculties,
       ...roomIdentity(entry.room),
       batch: entry.batch || '',
       days: [Number(entry.day)],
@@ -218,13 +233,32 @@ export default function ManageTimetable() {
     return { ...current, days: days.length ? days : [day], daySlots: { ...current.daySlots, [day]: current.daySlots[current.days[0]] || 1 } };
   });
 
-  const handleSubjectChange = subject => {
-    const nextSubject = options.subjects.find(item => item._id === subject);
-    const mapped = nextSubject?.facultyId
-      ? options.faculty.find(faculty => String(faculty.facultyProfileId) === String(nextSubject.facultyId))
-      : null;
+  const handleSubjectChange = subjectId => {
+    const nextSubject = options.subjects.find(item => item._id === subjectId);
+    const nextIsLab = nextSubject?.type === 'lab';
+    let defaultFaculty = '';
+    let defaultFaculties = [];
+    if (nextSubject) {
+      const allowedIds = nextSubject.assignedFacultyUserIds && nextSubject.assignedFacultyUserIds.length > 0
+        ? new Set(nextSubject.assignedFacultyUserIds.map(String))
+        : (nextSubject.facultyId ? new Set(options.faculty.filter(f => String(f.facultyProfileId) === String(nextSubject.facultyId)).map(f => String(f._id))) : new Set());
+      const eligible = options.faculty.filter(f => allowedIds.has(String(f._id)));
+      if (nextIsLab) {
+        defaultFaculties = eligible.map(f => f._id);
+        defaultFaculty = defaultFaculties[0] || '';
+      } else {
+        defaultFaculty = eligible[0]?._id || '';
+        defaultFaculties = defaultFaculty ? [defaultFaculty] : [];
+      }
+    }
     setShowAllFaculty(false);
-    setForm(current => ({ ...current, subject, faculty: mapped?._id || '', batch: '' }));
+    setForm(current => ({
+      ...current,
+      subject: subjectId,
+      faculty: defaultFaculty,
+      faculties: defaultFaculties,
+      batch: '',
+    }));
   };
   const handleBuildingChange = building => setForm(current => ({ ...current, building, roomNo: '' }));
 
@@ -263,10 +297,19 @@ export default function ManageTimetable() {
       setConflicts(['Please select a valid building and room number.']);
       return;
     }
+    if (isLab && (!form.faculties || form.faculties.length === 0)) {
+      setConflicts(['Please select at least one faculty member for the lab.']);
+      return;
+    }
+    if (!isLab && !form.faculty) {
+      setConflicts(['Please select a faculty member.']);
+      return;
+    }
     const payloadEntries = days.map(day => ({
       section: section._id,
       subject: form.subject,
-      faculty: form.faculty,
+      faculty: isLab ? (form.faculties[0] || form.faculty) : form.faculty,
+      faculties: isLab ? form.faculties : [form.faculty],
       subjectType: selectedSubject?.subjectType || 'Subject',
       showAllFaculty,
       room: selectedRoom._id,
@@ -340,7 +383,94 @@ export default function ManageTimetable() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="label sm:col-span-2">Subject<select required className="input mt-1" value={form.subject} onChange={event => handleSubjectChange(event.target.value)}><option value="">Select subject</option>{filteredSubjects.map(subject => <option key={`${subject.subjectType}-${subject._id}`} value={subject._id}>{subject.type === 'lab' ? '[LAB] ' : ''}{subject.code} · {subject.name} {subject.type === 'lab' ? '' : '(THEORY)'}</option>)}</select>{!filteredSubjects.length && <p className="mt-1 text-xs text-amber-700">{TIMETABLE_MESSAGES.NO_SUBJECTS_AVAILABLE}</p>}</label>
-              <label className="label">Faculty<select required disabled={!form.subject} className="input mt-1" value={form.faculty} onChange={event => setForm(current => ({ ...current, faculty: event.target.value }))}><option value="">Select faculty</option>{facultyChoices.map(faculty => <option key={faculty._id} value={faculty._id}>{faculty.name}</option>)}</select>{form.subject && !assignedFaculty.length && <><p className="mt-1 text-xs text-amber-700">{TIMETABLE_MESSAGES.NO_FACULTY_ASSIGNED}</p><label className="mt-2 flex items-center gap-2 text-xs"><input type="checkbox" checked={showAllFaculty} onChange={event => { setShowAllFaculty(event.target.checked); setForm(current => ({ ...current, faculty: '' })); }} />Show all faculty</label></>}</label>
+              {isLab ? (
+                <div className="label">
+                  <div className="flex items-center justify-between">
+                    <span>Faculty (Multiple for Lab)</span>
+                    <span className="text-xs font-normal text-slate-500">{form.faculties.length} selected</span>
+                  </div>
+                  <div className="mt-1 max-h-36 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 space-y-1">
+                    {facultyChoices.length === 0 ? (
+                      <p className="text-xs text-amber-700 py-1">{TIMETABLE_MESSAGES.NO_FACULTY_ASSIGNED}</p>
+                    ) : (
+                      facultyChoices.map(faculty => {
+                        const checked = form.faculties.includes(faculty._id);
+                        return (
+                          <label key={faculty._id} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-slate-50 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={e => {
+                                const next = e.target.checked
+                                  ? [...form.faculties, faculty._id]
+                                  : form.faculties.filter(id => id !== faculty._id);
+                                setForm(current => ({
+                                  ...current,
+                                  faculties: next,
+                                  faculty: next[0] || '',
+                                }));
+                              }}
+                              className="rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                            />
+                            <span className="text-slate-700 text-xs font-medium">{faculty.name}</span>
+                          </label>
+                        );
+                      })
+                    )}
+                  </div>
+                  {form.subject && !assignedFaculty.length && (
+                    <>
+                      <p className="mt-1 text-xs text-amber-700">{TIMETABLE_MESSAGES.NO_FACULTY_ASSIGNED}</p>
+                      <label className="mt-2 flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={showAllFaculty}
+                          onChange={event => {
+                            setShowAllFaculty(event.target.checked);
+                            setForm(current => ({ ...current, faculty: '', faculties: [] }));
+                          }}
+                        />
+                        Show all faculty
+                      </label>
+                    </>
+                  )}
+                  {form.subject && form.faculties.length === 0 && (
+                    <p className="mt-1 text-xs text-red-500">Please select at least one faculty member.</p>
+                  )}
+                </div>
+              ) : (
+                <label className="label">
+                  Faculty
+                  <select
+                    required
+                    disabled={!form.subject}
+                    className="input mt-1"
+                    value={form.faculty}
+                    onChange={event => setForm(current => ({ ...current, faculty: event.target.value, faculties: [event.target.value] }))}
+                  >
+                    <option value="">Select faculty</option>
+                    {facultyChoices.map(faculty => (
+                      <option key={faculty._id} value={faculty._id}>{faculty.name}</option>
+                    ))}
+                  </select>
+                  {form.subject && !assignedFaculty.length && (
+                    <>
+                      <p className="mt-1 text-xs text-amber-700">{TIMETABLE_MESSAGES.NO_FACULTY_ASSIGNED}</p>
+                      <label className="mt-2 flex items-center gap-2 text-xs">
+                        <input
+                          type="checkbox"
+                          checked={showAllFaculty}
+                          onChange={event => {
+                            setShowAllFaculty(event.target.checked);
+                            setForm(current => ({ ...current, faculty: '', faculties: [] }));
+                          }}
+                        />
+                        Show all faculty
+                      </label>
+                    </>
+                  )}
+                </label>
+              )}
               <label className="label">Building<select required className="input mt-1" value={form.building} onChange={event => handleBuildingChange(event.target.value)}><option value="">Select building</option>{roomConfig.BUILDINGS.filter(building => roomOptions.some(room => room.building === building)).map(building => <option key={building} value={building}>{building}</option>)}</select></label>
               <label className="label">Room No.<select required className="input mt-1" value={form.roomNo} disabled={!form.building} onChange={event => setForm(current => ({ ...current, roomNo: event.target.value }))}><option value="">Select room no.</option>{roomNumbers.filter(roomNo => roomOptions.some(room => room.building === form.building && room.roomNo === roomNo)).map(roomNo => <option key={roomNo} value={roomNo}>{form.building}-{roomNo}</option>)}</select></label>
               <div className="label">Batch<select className="input mt-1" value={isLab ? form.batch : ''} disabled={!isLab} required={isLab} onChange={event => setForm(current => ({ ...current, batch: event.target.value }))}><option value="">{isLab ? 'Select batch' : 'All students'}</option>{isLab && sectionBatches.map(batch => <option key={batch} value={batch}>{batch}</option>)}</select>{isLab && <div className="mt-2 flex gap-2"><input className="input" value={batchDraft} onChange={event => setBatchDraft(event.target.value)} placeholder="Add batch" /><button type="button" onClick={addBatch} className="btn-secondary whitespace-nowrap">Add</button></div>}{isLab && <div className="mt-2 flex flex-wrap gap-1">{sectionBatches.map(batch => <button type="button" key={batch} onClick={() => removeBatch(batch)} className="badge-blue" title={`Remove ${batch}`}>{batch} ×</button>)}</div>}</div>

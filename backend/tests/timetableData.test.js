@@ -61,16 +61,48 @@ test('students from two sections query every batch in their matching section', a
   }));
 });
 
-test('faculty timetable is scoped only by the authenticated faculty id', async () => {
+test('faculty timetable queries both legacy faculty and faculties fields', async () => {
   await getFacultyTimetable('faculty-a', { academicYear: '2027-2028' });
   await getFacultyTimetable('faculty-b', { academicYear: '2027-2028' });
 
   expect(TimetableEntry.find).toHaveBeenNthCalledWith(1, {
-    faculty: 'faculty-a',
+    $or: [{ faculty: 'faculty-a' }, { faculties: 'faculty-a' }],
     academicYear: '2027-2028',
   });
   expect(TimetableEntry.find).toHaveBeenNthCalledWith(2, {
-    faculty: 'faculty-b',
+    $or: [{ faculty: 'faculty-b' }, { faculties: 'faculty-b' }],
     academicYear: '2027-2028',
   });
+});
+
+test('deduplicates timetable entries if entry matches both faculty and faculties', async () => {
+  const sharedEntry = {
+    _id: 'entry-1',
+    day: 1,
+    startSlot: 1,
+    slotCount: 2,
+    faculty: 'faculty-a',
+    faculties: ['faculty-a', 'faculty-b'],
+  };
+  TimetableEntry.find.mockReturnValue(timetableQuery([sharedEntry, sharedEntry]));
+
+  const result = await getFacultyTimetable('faculty-a', { academicYear: '2027-2028' });
+  expect(result.entries).toHaveLength(1);
+  expect(result.entries[0]._id).toBe('entry-1');
+});
+
+test('returns entries where faculty is only present in faculties array', async () => {
+  const labEntry = {
+    _id: 'lab-entry-1',
+    day: 2,
+    startSlot: 4,
+    slotCount: 2,
+    faculty: 'faculty-primary',
+    faculties: ['faculty-primary', 'faculty-secondary'],
+  };
+  TimetableEntry.find.mockReturnValue(timetableQuery([labEntry]));
+
+  const result = await getFacultyTimetable('faculty-secondary', { academicYear: '2027-2028' });
+  expect(result.entries).toHaveLength(1);
+  expect(result.entries[0]._id).toBe('lab-entry-1');
 });

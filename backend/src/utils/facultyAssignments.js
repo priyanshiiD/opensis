@@ -65,18 +65,21 @@ const getAssignedItemsByFaculty = async (facultyIds, { session, term } = {}) => 
  *   - subjects whose primary `facultyId` points at this faculty
  * keeps older records (created before teaching assignments existed) readable.
  */
-const syncFacultySubjectsTaught = async (facultyIds) => {
+const syncFacultySubjectsTaught = async (facultyIds, { session } = {}) => {
   const ids = uniqueIds(facultyIds);
   if (ids.length === 0) return;
 
-  const [assignments, primarySubjects] = await Promise.all([
-    FacultyTeachingAssignment.find({
-      facultyId: { $in: ids },
-      itemType: 'class',
-      subjectId: { $ne: null },
-    }).select('facultyId subjectId').lean(),
-    Subject.find({ facultyId: { $in: ids } }).select('_id facultyId').lean(),
-  ]);
+  const assignmentQuery = FacultyTeachingAssignment.find({
+    facultyId: { $in: ids },
+    itemType: 'class',
+    subjectId: { $ne: null },
+  }).select('facultyId subjectId').lean();
+  const subjectQuery = Subject.find({ facultyId: { $in: ids } }).select('_id facultyId').lean();
+  if (session) {
+    assignmentQuery.session(session);
+    subjectQuery.session(session);
+  }
+  const [assignments, primarySubjects] = await Promise.all([assignmentQuery, subjectQuery]);
 
   const byFaculty = new Map(ids.map((id) => [id, new Set()]));
 
@@ -98,7 +101,7 @@ const syncFacultySubjectsTaught = async (facultyIds) => {
         update: { $set: { subjectsTaught: [...(byFaculty.get(id) || [])] } },
       },
     })),
-    { ordered: false },
+    { ordered: false, ...(session ? { session } : {}) },
   );
 };
 

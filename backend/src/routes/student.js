@@ -2,6 +2,7 @@ const router = require('express').Router();
 const { authenticate, authorize, currentAcademicSessionOnly } = require('../middleware/auth');
 const upload = require('../middleware/upload');
 const ctrl = require('../controllers/studentController');
+const mstCtrl = require('../controllers/mstMarkController');
 
 router.use(authenticate, authorize('student'));
 
@@ -19,6 +20,7 @@ router.get('/admit-card', ctrl.getAdmitCard);
 router.get('/result', ctrl.getResult);
 router.get('/results', ctrl.getResult);
 router.get('/internal-marks', ctrl.getInternalMarks);
+router.get('/mst-marks', mstCtrl.getStudentMstMarks);
 router.post('/revaluation', currentAcademicSessionOnly, ctrl.submitRevaluation);
 router.get('/revaluation', ctrl.getRevaluationRequests);
 router.get('/fees', ctrl.getFees);

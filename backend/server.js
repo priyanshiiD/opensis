@@ -127,10 +127,7 @@ const corsOptions = {
 };
 app.use(cors(corsOptions));
 
-app.use(express.json());
-
-// Uploaded files are mirrored into MongoDB, so serve them from there first and
-// fall back to the legacy on-disk copy for files uploaded before the mirror existed.
+app.use(express.json({ limit: '5mb' }));
 const wantsDownload = (req) => req.query.download === '1' || req.query.download === 'true';
 
 const sendStoredAsset = (res, asset, downloadName, cacheControl = 'public, max-age=86400') => {
@@ -223,11 +220,24 @@ app.get('/api/files/:id', async (req, res) => {
 
 app.use((err, req, res, next) => {
   console.error(err.stack);
+  if (err.isImportUploadError) {
+    return res.status(400).json({ success: false, message: err.message });
+  }
   if (err.message && err.message.includes('Invalid file format')) {
     return res.status(400).json({ success: false, message: err.message });
   }
+  if (err.type === 'entity.too.large') {
+    return res.status(413).json({
+      success: false,
+      message: 'The request is too large. Reduce the number of rows or the amount of syllabus text.',
+    });
+  }
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(400).json({ success: false, message: 'File size limit exceeded. Maximum size is 10MB.' });
+    const isImport = String(req.path || '').includes('/subjects/import');
+    return res.status(400).json({
+      success: false,
+      message: isImport ? 'File size limit exceeded. Maximum size is 5MB.' : 'File size limit exceeded. Maximum size is 10MB.',
+    });
   }
   res.status(500).json({ success: false, message: 'Internal server error' });
 });
