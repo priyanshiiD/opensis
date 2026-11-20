@@ -26,6 +26,7 @@ const { getStudentTimetable } = require('../services/timetableData');
 const { resolveStudentSection } = require('../utils/sectionResolver');
 const { serializeAdmitCard } = require('../services/admitCard');
 const { buildStudentNoticeFilter } = require('../services/noticeAudienceService');
+const { saveUploadedFile } = require('../utils/fileAsset');
 
 exports.getMyTimetable = async (req, res) => {
   try {
@@ -91,10 +92,10 @@ exports.updateProfile = async (req, res) => {
     // Handle uploaded files (profilePhoto and signature)
     if (req.files) {
       if (req.files.profilePhoto && req.files.profilePhoto[0]) {
-        update.profilePhotoUrl = `/uploads/${req.files.profilePhoto[0].filename}`;
+        update.profilePhotoUrl = await saveUploadedFile(req.files.profilePhoto[0]);
       }
       if (req.files.signature && req.files.signature[0]) {
-        update.signatureUrl = `/uploads/${req.files.signature[0].filename}`;
+        update.signatureUrl = await saveUploadedFile(req.files.signature[0]);
       }
     }
 

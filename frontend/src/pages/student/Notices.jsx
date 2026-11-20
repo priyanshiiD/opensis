@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import api from '../../api/axios';
 import { useAuth } from '../../context/AuthContext';
 import { Bell, Pin, Paperclip, CalendarDays } from 'lucide-react';
+import { resolveAssetDownloadUrl } from '../../utils/assetUrl';
 
 const formatDate = (value) => {
   if (!value) return '';
@@ -56,9 +57,9 @@ export default function StudentNotices() {
                   {Array.isArray(n.attachments) && n.attachments.length > 0 && (
                     <div className="mt-3 flex flex-wrap gap-2">
                       {n.attachments.map((attachment, index) => {
-                        const href = attachment.startsWith('/') ? attachment : `/${attachment}`;
+                        const value = attachment.startsWith('/') ? attachment : `/${attachment}`;
                         return (
-                          <a key={index} href={href} target="_blank" rel="noreferrer" className="text-xs font-medium text-primary-600 bg-primary-50 border border-primary-100 px-3 py-1.5 rounded-full hover:bg-primary-100 transition-colors flex items-center gap-1">
+                          <a key={index} href={resolveAssetDownloadUrl(value)} target="_blank" rel="noreferrer" className="text-xs font-medium text-primary-600 bg-primary-50 border border-primary-100 px-3 py-1.5 rounded-full hover:bg-primary-100 transition-colors flex items-center gap-1">
                             <Paperclip className="w-3 h-3" /> Download Attachment {index + 1}
                           </a>
                         );

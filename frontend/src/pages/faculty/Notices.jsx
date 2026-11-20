@@ -6,13 +6,7 @@ import {
   Megaphone, Inbox, Loader2,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
-
-const resolveAssetUrl = (value) => {
-  if (!value) return '';
-  if (/^https?:\/\//i.test(value)) return value;
-  const base = (import.meta.env.VITE_API_URL || '').replace(/\/api\/?$/, '');
-  return `${base}${value}`;
-};
+import { resolveAssetUrl, resolveAssetDownloadUrl } from '../../utils/assetUrl';
 
 const emptyForm = {
   title: '',
@@ -413,7 +407,7 @@ export default function FacultyNotices() {
               {Array.isArray(notice.attachments) && notice.attachments.length > 0 && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {notice.attachments.map((attachment, index) => (
-                    <a key={index} href={resolveAssetUrl(attachment)} target="_blank" rel="noreferrer" className="text-xs font-medium text-primary-600 bg-primary-50 border border-primary-100 px-3 py-1.5 rounded-full hover:bg-primary-100 transition-colors">
+                    <a key={index} href={resolveAssetDownloadUrl(attachment)} target="_blank" rel="noreferrer" className="text-xs font-medium text-primary-600 bg-primary-50 border border-primary-100 px-3 py-1.5 rounded-full hover:bg-primary-100 transition-colors">
                       View Attachment {index + 1}
                     </a>
                   ))}

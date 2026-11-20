@@ -5,6 +5,7 @@ import { User, Save, Mail, Phone, MapPin, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { isValidPhone, PHONE_ERROR_MESSAGE } from '../../utils/phoneValidation';
 import { getDepartmentLabel } from '../../constants/departments';
+import { resolveAssetUrl } from '../../utils/assetUrl';
 
 export default function StudentProfile() {
   const { user, selectedSession, selectedTerm } = useAuth();
@@ -72,8 +73,8 @@ export default function StudentProfile() {
         gender: s.gender || '',
         dob: formatDateForInput(s.dob),
       });
-      setProfilePreview(s.profilePhotoUrl || null);
-      setSignaturePreview(s.signatureUrl || null);
+      setProfilePreview(resolveAssetUrl(s.profilePhotoUrl) || null);
+      setSignaturePreview(resolveAssetUrl(s.signatureUrl) || null);
     }).catch(() => { if (active) toast.error('Failed to load profile'); });
     return () => { active = false; };
   }, [selectedSession, selectedTerm]);
@@ -155,7 +156,7 @@ export default function StudentProfile() {
         {/* Profile Card */}
         <div className="card flex flex-col items-center text-center">
           {profile.profilePhotoUrl ? (
-            <img src={profile.profilePhotoUrl} alt="profile" className="w-20 h-20 object-cover rounded-full mb-4" />
+            <img src={resolveAssetUrl(profile.profilePhotoUrl)} alt="profile" className="w-20 h-20 object-cover rounded-full mb-4" />
           ) : (
             <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center mb-4">
               <User className="w-10 h-10 text-primary-600" />
@@ -344,7 +345,7 @@ export default function StudentProfile() {
               ) : (
                 <div className="flex items-center gap-3">
                   {profile.profilePhotoUrl ? (
-                    <img src={profile.profilePhotoUrl} alt="profile" className="w-20 h-20 object-cover rounded" />
+                    <img src={resolveAssetUrl(profile.profilePhotoUrl)} alt="profile" className="w-20 h-20 object-cover rounded" />
                   ) : (
                     <div className="w-20 h-20 bg-primary-100 rounded-full flex items-center justify-center">
                       <User className="w-8 h-8 text-primary-600" />
@@ -378,7 +379,7 @@ export default function StudentProfile() {
                 </div>
               ) : (
                 <div>
-                  {profile.signatureUrl ? <img src={profile.signatureUrl} alt="signature" className="h-12 object-contain" /> : <p className="text-sm text-slate-500">—</p>}
+                  {profile.signatureUrl ? <img src={resolveAssetUrl(profile.signatureUrl)} alt="signature" className="h-12 object-contain" /> : <p className="text-sm text-slate-500">—</p>}
                 </div>
               )}
             </div>
