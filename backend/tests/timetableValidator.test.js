@@ -4,6 +4,9 @@ jest.mock('../src/models/TimetableEntry', () => ({
 jest.mock('../src/models/Subject', () => ({
   findById: jest.fn(),
 }));
+jest.mock('../src/models/Lab', () => ({
+  findById: jest.fn(),
+}));
 jest.mock('../src/models/Section', () => ({
   findById: jest.fn(),
 }));
@@ -23,6 +26,7 @@ jest.mock('../src/models/FacultyTeachingAssignment', () => ({
 
 const TimetableEntry = require('../src/models/TimetableEntry');
 const Subject = require('../src/models/Subject');
+const Lab = require('../src/models/Lab');
 const Section = require('../src/models/Section');
 const Room = require('../src/models/Room');
 const Faculty = require('../src/models/Faculty');
@@ -59,12 +63,18 @@ const baseEntry = overrides => ({
 
 function arrange({ subjectType = 'theory', batches = ['A1', 'A2'], conflicts = [[], [], []] } = {}) {
   Subject.findById.mockReturnValue(queryWithResult({ type: subjectType, code: 'CS101', name: 'Algorithms', facultyId: 'faculty-profile' }));
+  Lab.findById.mockReturnValue(queryWithResult({ type: 'lab', code: 'CS102', name: 'Algorithms Lab', facultyId: 'faculty-profile' }));
   Faculty.findOne.mockReturnValue(queryWithResult({ _id: 'faculty-profile' }));
   Faculty.find.mockReturnValue(queryWithResult([{ _id: 'faculty-profile', userId: 'faculty-1', firstName: 'Faculty', lastName: 'One' }]));
   FacultyTeachingAssignment.find.mockReturnValue(queryWithResult([{ facultyId: 'faculty-profile' }]));
   User.find.mockReturnValue(queryWithResult([{ _id: 'faculty-1', role: 'faculty', isActive: true }]));
   Section.findById.mockReturnValue(queryWithResult({ department: 'IT', year: 3, sectionName: 'A', batches }));
-  Room.findById.mockReturnValue(queryWithResult({ building: 'ATC', roomNo: '101', name: 'ATC-101', type: 'classroom' }));
+  Room.findById.mockReturnValue(queryWithResult({
+    building: 'ATC',
+    roomNo: '101',
+    name: 'ATC-101',
+    type: subjectType === 'lab' ? 'lab' : 'classroom',
+  }));
   conflicts.forEach(conflict => TimetableEntry.find.mockReturnValueOnce(conflictQueryWithResult(conflict)));
 }
 
@@ -207,6 +217,7 @@ test('reports a conflict when another class uses a lab second slot', async () =>
 
 test('rejects a faculty that is not assigned to the selected subject', async () => {
   arrange();
+  Faculty.find.mockReturnValue(queryWithResult([]));
   Faculty.findOne.mockReturnValue(queryWithResult({ _id: 'different-faculty-profile' }));
   const result = await validateEntry(baseEntry());
   expect(result.badRequestErrors).toContain('Faculty error: the selected faculty is not assigned to this subject.');
