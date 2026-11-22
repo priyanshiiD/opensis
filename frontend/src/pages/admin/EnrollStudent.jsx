@@ -26,15 +26,34 @@ export default function EnrollStudent() {
   const [phoneError, setPhoneError] = useState('');
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const derivedYear = Math.ceil(Number(form.currentSemester) / 2);
+  const allowedSections = derivedYear === 1
+    ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']
+    : ['A', 'B'];
+  const today = new Date();
+  const maxDob = new Date(today.getFullYear() - 15, today.getMonth(), today.getDate()).toISOString().split('T')[0];
+  const minDob = new Date(today.getFullYear() - 100, today.getMonth(), today.getDate()).toISOString().split('T')[0];
 
-  const isValidEmail = (email) => /^[^\s@]+@[^\s@]+\.edu$/.test(email);
+  const isValidEmail = (email) => /^[^\s@]+@sgsits\.ac\.in$/i.test(String(email).trim());
+
+  const handleSemesterChange = (semester) => {
+    const nextYear = Math.ceil(semester / 2);
+    setForm(current => ({
+      ...current,
+      currentSemester: semester,
+      year: nextYear,
+      section: nextYear === 1
+        ? (['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K'].includes(current.section) ? current.section : 'A')
+        : (['A', 'B'].includes(current.section) ? current.section : 'A'),
+    }));
+  };
 
   const handleEmailChange = (e) => {
     const email = e.target.value;
     set('email', email);
 
     if (email && !isValidEmail(email)) {
-      setEmailError('Enter a valid email address');
+      setEmailError('Enter a valid SGSITS email (name@sgsits.ac.in)');
     } else {
       setEmailError('');
     }
@@ -84,7 +103,7 @@ export default function EnrollStudent() {
                 type="email" 
                 value={form.email} 
                 onChange={handleEmailChange}
-                placeholder="student@college.edu"
+                placeholder="student@sgsits.ac.in"
                 required 
               />
               {emailError && (
@@ -102,14 +121,14 @@ export default function EnrollStudent() {
           <h2 className="font-semibold text-slate-700 mb-4">Personal Details</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div><label className="label">First Name *</label><input className="input" value={form.firstName} onChange={e => set('firstName', e.target.value)} required /></div>
-            <div><label className="label">Last Name *</label><input className="input" value={form.lastName} onChange={e => set('lastName', e.target.value)} required /></div>
-            <div><label className="label">Date of Birth</label><input className="input" type="date" value={form.dob} onChange={e => set('dob', e.target.value)} /></div>
+            <div><label className="label">Last Name</label><input className="input" value={form.lastName} onChange={e => set('lastName', e.target.value)} /></div>
+            <div><label className="label">Date of Birth</label><input className="input" type="date" min={minDob} max={maxDob} value={form.dob} onChange={e => set('dob', e.target.value)} /></div>
             <div><label className="label">Gender</label>
               <select className="input" value={form.gender} onChange={e => set('gender', e.target.value)}>
                 <option value="female">Female</option><option value="male">Male</option><option value="other">Other</option>
               </select>
             </div>
-            <div><label className="label">Phone</label><input className={`input ${phoneError ? 'border-red-500' : ''}`} inputMode="numeric" value={form.phone} onChange={e => { set('phone', e.target.value); setPhoneError(''); }} />{phoneError && <p className="text-sm text-red-600 mt-1">{phoneError}</p>}</div>
+            <div><label className="label">Phone</label><input className={`input ${phoneError ? 'border-red-500' : ''}`} type="tel" inputMode="numeric" pattern="[0-9]{10}" maxLength={10} value={form.phone} onChange={e => { set('phone', e.target.value.replace(/\D/g, '').slice(0, 10)); setPhoneError(''); }} />{phoneError && <p className="text-sm text-red-600 mt-1">{phoneError}</p>}</div>
             <div><label className="label">Father's Name</label><input className="input" value={form.fatherName} onChange={e => set('fatherName', e.target.value)} /></div>
             <div><label className="label">Mother's Name</label><input className="input" value={form.motherName} onChange={e => set('motherName', e.target.value)} /></div>
             <div className="sm:col-span-2"><label className="label">Address</label><textarea className="input resize-none h-16" value={form.address} onChange={e => set('address', e.target.value)} /></div>
@@ -126,13 +145,17 @@ export default function EnrollStudent() {
               </select>
             </div>
             <div><label className="label">Current Semester *</label>
-              <select className="input" value={form.currentSemester} onChange={e => set('currentSemester', Number(e.target.value))}>
+              <select className="input" value={form.currentSemester} onChange={e => handleSemesterChange(Number(e.target.value))}>
                 {SEMESTERS.map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
-            <div><label className="label">Section</label><input className="input" value={form.section} onChange={e => set('section', e.target.value)} /></div>
+            <div><label className="label">Section *</label>
+              <select className="input" value={form.section} onChange={e => set('section', e.target.value)} required>
+                {allowedSections.map(section => <option key={section} value={section}>Section {section}</option>)}
+              </select>
+            </div>
             <div><label className="label">Year</label>
-              <select className="input" value={form.year} onChange={e => set('year', Number(e.target.value))}>
+              <select className="input bg-slate-100" value={derivedYear} disabled>
                 {YEAR_OPTIONS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </div>

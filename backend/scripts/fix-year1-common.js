@@ -52,10 +52,10 @@ const DEPT_BY_PREFIX = {
 };
 
 const PLACEHOLDERS = {
-  'Civil Engineering': { firstName: 'Civil', lastName: 'Faculty', employeeId: 'FAC-CIV-01', email: 'civil.faculty@college.edu' },
-  'Mechanical Engineering': { firstName: 'Mechanical', lastName: 'Faculty', employeeId: 'FAC-MECH-01', email: 'mechanical.faculty@college.edu' },
-  'Electronics & Communication': { firstName: 'ECE', lastName: 'Faculty', employeeId: 'FAC-ECE-01', email: 'ece.faculty@college.edu' },
-  Humanities: { firstName: 'Humanities', lastName: 'Faculty', employeeId: 'FAC-HUM-01', email: 'humanities.faculty@college.edu' },
+  'Civil Engineering': { firstName: 'Civil', lastName: 'Faculty', employeeId: 'FAC-CIV-01', email: 'civil.faculty@sgsits.ac.in' },
+  'Mechanical Engineering': { firstName: 'Mechanical', lastName: 'Faculty', employeeId: 'FAC-MECH-01', email: 'mechanical.faculty@sgsits.ac.in' },
+  'Electronics & Communication': { firstName: 'ECE', lastName: 'Faculty', employeeId: 'FAC-ECE-01', email: 'ece.faculty@sgsits.ac.in' },
+  Humanities: { firstName: 'Humanities', lastName: 'Faculty', employeeId: 'FAC-HUM-01', email: 'humanities.faculty@sgsits.ac.in' },
 };
 
 const departmentFor = (code) => DEPT_BY_PREFIX[String(code || '').slice(0, 2).toUpperCase()] || null;

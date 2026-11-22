@@ -32,6 +32,7 @@ const getProfile = async (userId, role) => {
 exports.login = async (req, res) => {
   try {
     const { email, password, role } = req.body;
+    const normalizedEmail = String(email ?? '').trim().toLowerCase();
     
     // Validate input
     if (!email || !password || !role) {
@@ -42,7 +43,7 @@ exports.login = async (req, res) => {
     }
 
     // Find user by email
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return res.status(404).json({ 
         success: false, 
@@ -232,16 +233,20 @@ exports.resetPassword = async (req, res) => {
 exports.register = async (req, res) => {
   try {
     const { email, password, firstName, lastName, branch, currentSemester, section, session, dob, gender, phone, fatherName, motherName, address } = req.body;
+    const normalizedEmail = String(email ?? '').trim().toLowerCase();
 
-    if (!email || !password || !firstName || !lastName) {
-      return res.status(400).json({ success: false, message: 'Email, password, first name and last name are required' });
+    if (!normalizedEmail || !password || !firstName) {
+      return res.status(400).json({ success: false, message: 'Email, password and first name are required' });
+    }
+    if (!/^[^\s@]+@sgsits\.ac\.in$/i.test(normalizedEmail)) {
+      return res.status(400).json({ success: false, message: 'Enter a valid SGSITS email address (name@sgsits.ac.in)' });
     }
 
-    const existing = await User.findOne({ email });
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) return res.status(400).json({ success: false, message: 'Email already in use' });
 
     const passwordHash = await bcrypt.hash(password, 12);
-    const user = await User.create({ email, passwordHash, role: 'student' });
+    const user = await User.create({ email: normalizedEmail, passwordHash, role: 'student' });
 
     // Create student profile with minimal fields; admin may later fill enrollmentNo, year, etc.
     const student = await Student.create({

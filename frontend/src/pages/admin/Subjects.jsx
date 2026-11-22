@@ -9,6 +9,7 @@ import academicConfig from '../../../../shared/academicConfig.json';
 import { departmentMatches, getDepartmentLabel } from '../../constants/departments';
 import SubjectImportModal from './SubjectImportModal';
 import { resolveAssetUrl, resolveAssetDownloadUrl } from '../../utils/assetUrl';
+import { validateSubjectCode, getSubjectCodePrefix, getYearForSemester } from '../../utils/subjectCode';
 
 const BRANCHES       = academicConfig.DEPARTMENTS;
 const SESSIONS       = academicConfig.ACADEMIC_YEARS;
@@ -81,6 +82,7 @@ const SubjectModal = ({ modal, allFaculty, onClose, onSaved }) => {
   const [form, setForm] = useState(modal.form);
   const [file, setFile] = useState(null);
   const [saving, setSaving] = useState(false);
+  const codeError = validateSubjectCode(form.code, form.branch, form.semester, { isCommon: !!form.isCommon });
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
@@ -96,6 +98,10 @@ const SubjectModal = ({ modal, allFaculty, onClose, onSaved }) => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (codeError) {
+      toast.error(codeError);
+      return;
+    }
     const base = isLab ? '/admin/labs' : '/admin/subjects';
     const payload = {
       code: form.code, name: form.name,
@@ -159,8 +165,18 @@ const SubjectModal = ({ modal, allFaculty, onClose, onSaved }) => {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="label">Code *</label>
-              <input className="input font-mono uppercase" value={form.code}
-                onChange={e => set('code', e.target.value)} required placeholder="e.g. IT38101" />
+              <input
+                className={`input font-mono uppercase ${form.code && codeError ? 'border-red-500 focus:border-red-500' : ''}`}
+                value={form.code}
+                onChange={e => set('code', e.target.value)}
+                required
+                placeholder={form.branch === 'MBA'
+                  ? 'e.g. MBA1001'
+                  : `e.g. ${getSubjectCodePrefix(form.branch)}${getYearForSemester(form.semester) || 1}1001`}
+              />
+              {form.code && codeError && (
+                <p className="mt-1 text-xs font-medium text-red-600">{codeError}</p>
+              )}
             </div>
             <div>
               <label className="label">Credits</label>

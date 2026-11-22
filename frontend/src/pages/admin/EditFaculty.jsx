@@ -5,6 +5,10 @@ import toast from 'react-hot-toast';
 import { ArrowLeft, BookOpen, FlaskConical } from 'lucide-react';
 import { isValidPhone, PHONE_ERROR_MESSAGE } from '../../utils/phoneValidation';
 import { DEPARTMENT_OPTIONS, getDepartmentLabel, getDepartmentValue } from '../../constants/departments';
+import {
+  FACULTY_DESIGNATION_OPTIONS,
+  FACULTY_QUALIFICATION_OPTIONS,
+} from '../../constants/facultyProfessional';
 
 export default function EditFaculty() {
   const { id } = useParams();
@@ -16,6 +20,8 @@ export default function EditFaculty() {
 
   const [subjectIds, setSubjectIds] = useState([]);
   const [labIds, setLabIds] = useState([]);
+  const [subjectSearch, setSubjectSearch] = useState('');
+  const [labSearch, setLabSearch] = useState('');
   const [availableSubjects, setAvailableSubjects] = useState([]);
   const [availableLabs, setAvailableLabs] = useState([]);
   const [loadingSubjects, setLoadingSubjects] = useState(false);
@@ -27,6 +33,7 @@ export default function EditFaculty() {
     api.get(`/admin/faculty/${id}`).then(r => {
       const f = r.data.data.faculty;
       setForm({
+        namePrefix: f.namePrefix || '',
         firstName: f.firstName || '',
         lastName: f.lastName || '',
         phone: f.phone || '',
@@ -65,6 +72,8 @@ export default function EditFaculty() {
     if (!isInitialSubjectLoad.current) {
       setSubjectIds([]);
       setLabIds([]);
+      setSubjectSearch('');
+      setLabSearch('');
     }
     isInitialSubjectLoad.current = false;
     setLoadingSubjects(true);
@@ -182,6 +191,18 @@ export default function EditFaculty() {
         <div className="card">
           <h2 className="font-semibold text-slate-700 mb-4">Personal Details</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="label">Name Prefix (Optional)</label>
+              <select className="input" value={form.namePrefix} onChange={e => set('namePrefix', e.target.value)}>
+                <option value="">No prefix</option>
+                <option value="Mr.">Mr.</option>
+                <option value="Mrs.">Mrs.</option>
+                <option value="Ms.">Ms.</option>
+                <option value="Miss">Miss</option>
+                <option value="Dr.">Dr.</option>
+                <option value="Prof.">Prof.</option>
+              </select>
+            </div>
             <div><label className="label">First Name *</label><input className="input" value={form.firstName} onChange={e => set('firstName', e.target.value)} required /></div>
             <div><label className="label">Last Name *</label><input className="input" value={form.lastName} onChange={e => set('lastName', e.target.value)} required /></div>
             <div><label className="label">Phone</label><input className={`input ${phoneError ? 'border-red-500' : ''}`} inputMode="numeric" value={form.phone} onChange={e => { set('phone', e.target.value); setPhoneError(''); }} />{phoneError && <p className="text-sm text-red-600 mt-1">{phoneError}</p>}</div>
@@ -270,8 +291,26 @@ export default function EditFaculty() {
                 {DEPARTMENT_OPTIONS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}
               </select>
             </div>
-            <div><label className="label">Designation</label><input className="input" value={form.designation} onChange={e => set('designation', e.target.value)} placeholder="e.g. Associate Professor" /></div>
-            <div><label className="label">Qualification</label><input className="input" value={form.qualification} onChange={e => set('qualification', e.target.value)} placeholder="e.g. M.Tech, Ph.D" /></div>
+            <div>
+              <label className="label">Designation</label>
+              <select className="input" value={form.designation} onChange={e => set('designation', e.target.value)}>
+                <option value="">Select designation</option>
+                {form.designation && !FACULTY_DESIGNATION_OPTIONS.includes(form.designation) && (
+                  <option value={form.designation}>{form.designation}</option>
+                )}
+                {FACULTY_DESIGNATION_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Qualification</label>
+              <select className="input" value={form.qualification} onChange={e => set('qualification', e.target.value)}>
+                <option value="">Select qualification</option>
+                {form.qualification && !FACULTY_QUALIFICATION_OPTIONS.includes(form.qualification) && (
+                  <option value={form.qualification}>{form.qualification}</option>
+                )}
+                {FACULTY_QUALIFICATION_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+              </select>
+            </div>
             <div><label className="label">Joining Date</label><input className="input" type="date" value={form.joiningDate} onChange={e => set('joiningDate', e.target.value)} /></div>
           </div>
         </div>
@@ -289,6 +328,13 @@ export default function EditFaculty() {
           <p className="text-xs text-slate-400 mb-4">
             Showing subjects from <strong>{getDepartmentLabel(form.department)}</strong>. Change department above to see others.
           </p>
+          <input
+            type="search"
+            className="input mb-3"
+            value={subjectSearch}
+            onChange={e => setSubjectSearch(e.target.value)}
+            placeholder="Search subject name or code..."
+          />
 
           {loadingSubjects ? (
             <div className="space-y-2">
@@ -298,7 +344,11 @@ export default function EditFaculty() {
             <p className="text-sm text-slate-400 italic">No subjects found for {getDepartmentLabel(form.department)}.</p>
           ) : (
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {availableSubjects.map(s => {
+              {availableSubjects.filter(s => {
+                const query = subjectSearch.trim().toLowerCase();
+                return !query || String(s.name || '').toLowerCase().includes(query)
+                  || String(s.code || '').toLowerCase().includes(query);
+              }).map(s => {
                 const checked = subjectIds.includes(s._id);
                 const otherFaculty = s.facultyId && String(s.facultyId._id || s.facultyId) !== id && !checked;
                 return (
@@ -348,6 +398,13 @@ export default function EditFaculty() {
           <p className="text-xs text-slate-400 mb-4">
             Showing labs from <strong>{getDepartmentLabel(form.department)}</strong>. Change department above to see others.
           </p>
+          <input
+            type="search"
+            className="input mb-3"
+            value={labSearch}
+            onChange={e => setLabSearch(e.target.value)}
+            placeholder="Search lab name or code..."
+          />
 
           {loadingLabs ? (
             <div className="space-y-2">
@@ -357,7 +414,11 @@ export default function EditFaculty() {
             <p className="text-sm text-slate-400 italic">No labs found for {getDepartmentLabel(form.department)}.</p>
           ) : (
             <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-              {availableLabs.map(lab => {
+              {availableLabs.filter(lab => {
+                const query = labSearch.trim().toLowerCase();
+                return !query || String(lab.name || '').toLowerCase().includes(query)
+                  || String(lab.code || '').toLowerCase().includes(query);
+              }).map(lab => {
                 const checked = labIds.includes(lab._id);
                 const otherFaculty = lab.facultyId && String(lab.facultyId._id || lab.facultyId) !== id && !checked;
                 return (

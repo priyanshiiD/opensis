@@ -50,7 +50,7 @@ export default function FacultyDetail() {
             <User className="w-8 h-8 text-primary-600" />
           </div>
           <div>
-            <h2 className="text-xl font-semibold text-slate-800">{faculty.firstName} {faculty.lastName}</h2>
+            <h2 className="text-xl font-semibold text-slate-800">{[faculty.namePrefix, faculty.firstName, faculty.lastName].filter(Boolean).join(' ')}</h2>
             <p className="text-slate-500 text-sm">{faculty.designation || 'Faculty'}</p>
             <p className="text-slate-400 text-xs mt-0.5">{faculty.email || '—'}</p>
           </div>

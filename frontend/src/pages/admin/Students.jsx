@@ -265,9 +265,14 @@ export default function AdminStudents() {
           <h1 className="text-2xl font-bold text-slate-800">Students</h1>
           <p className="text-slate-500 text-sm">{total} total enrolled</p>
         </div>
-        <button onClick={() => setShowBackfillConfirm(true)} disabled={backfilling} className="btn-secondary text-sm">
-          {backfilling ? 'Syncing history...' : 'Sync Academic History'}
-        </button>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          <Link to="/admin/enroll-student" className="btn-primary text-sm">
+            Add student
+          </Link>
+          <button onClick={() => setShowBackfillConfirm(true)} disabled={backfilling} className="btn-secondary text-sm">
+            {backfilling ? 'Syncing history...' : 'Sync Academic History'}
+          </button>
+        </div>
       </div>
 
       <div className="card mb-4">

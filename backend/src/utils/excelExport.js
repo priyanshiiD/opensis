@@ -107,6 +107,7 @@ const createFacultyWorkbook = (faculty) => {
   // Define columns
   worksheet.columns = [
     { header: 'Employee ID', key: 'employeeId', width: 15 },
+    { header: 'Name Prefix', key: 'namePrefix', width: 12 },
     { header: 'First Name', key: 'firstName', width: 15 },
     { header: 'Last Name', key: 'lastName', width: 15 },
     { header: 'Email', key: 'email', width: 20 },
@@ -127,6 +128,7 @@ const createFacultyWorkbook = (faculty) => {
   faculty.forEach((member) => {
     const row = {
       employeeId: member.employeeId,
+      namePrefix: member.namePrefix || '',
       firstName: member.firstName,
       lastName: member.lastName,
       email: member.email || '',
@@ -153,6 +155,7 @@ const createFacultyTemplateWorkbook = (faculty) => {
 
   worksheet.columns = [
     { header: 'employeeId', key: 'employeeId', width: 18 },
+    { header: 'namePrefix', key: 'namePrefix', width: 12 },
     { header: 'fullName', key: 'fullName', width: 24 },
     { header: 'email', key: 'email', width: 24 },
     { header: 'phone', key: 'phone', width: 18 },
@@ -167,6 +170,7 @@ const createFacultyTemplateWorkbook = (faculty) => {
   faculty.forEach((member) => {
     worksheet.addRow({
       employeeId: member.employeeId,
+      namePrefix: member.namePrefix || '',
       fullName: member.fullName,
       email: member.email || '',
       phone: member.phone || '',

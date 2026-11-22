@@ -175,7 +175,7 @@ export default function AdminFaculty() {
                 faculty.map(f => (
                   <tr key={f._id} className="border-b border-slate-100 hover:bg-slate-50">
                     <td className="px-4 py-3 font-mono text-xs">{f.employeeId}</td>
-                    <td className="px-4 py-3 font-medium">{f.firstName} {f.lastName}</td>
+                    <td className="px-4 py-3 font-medium">{[f.namePrefix, f.firstName, f.lastName].filter(Boolean).join(' ')}</td>
                     <td className="px-4 py-3 text-slate-500 text-xs">{f.email || '—'}</td>
                     <td className="px-4 py-3"><span className="badge-indigo">{getDepartmentLabel(f.department) || '—'}</span></td>
                     <td className="px-4 py-3 text-slate-600">{f.designation || '—'}</td>

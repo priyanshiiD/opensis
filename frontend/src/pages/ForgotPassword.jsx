@@ -35,8 +35,7 @@ export default function ForgotPassword() {
         <div className="card">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="label">Email</label>
-              <input type="email" className="input" value={email} onChange={e => setEmail(e.target.value)} required placeholder="your@email.edu" />
+              <input type="email" className="input" value={email} onChange={e => setEmail(e.target.value)} required placeholder="name@sgsits.ac.in" />
             </div>
             <button type="submit" disabled={loading} className="btn-primary w-full justify-center py-2.5">
               {loading ? 'Sending...' : 'Send Reset Link'}

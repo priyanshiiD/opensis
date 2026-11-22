@@ -50,6 +50,10 @@ const {
   resultStatusFor,
 } = require('../utils/resultFilters');
 const {
+  validateSubjectCode,
+  normalizeSubjectCodeForScheme,
+} = require('../utils/subjectCode');
+const {
   getAssignedItemsByFaculty,
   syncFacultySubjectsTaught: syncFacultySubjectsTaughtFromAssignments,
   ensureTeachingAssignments,
@@ -186,15 +190,57 @@ const normalizeStudentPayloadSession = (payload) => ({
 exports.enrollStudent = async (req, res) => {
   try {
     const { email, password, enrollmentNo, firstName, lastName, branch, currentSemester, section, year, admissionYear, session, dob, gender, phone, address, fatherName, motherName } = req.body;
+    const normalizedEmail = String(email ?? '').trim().toLowerCase();
     const normalizedEnrollmentNo = String(enrollmentNo ?? '').trim();
     const normalizedSession = normalizeSessionValue(session);
-    const normalizedYear = normalizeStudentYear(year ?? admissionYear, currentSemester);
+    const normalizedSemester = Number(currentSemester);
+    const normalizedYear = normalizeStudentYear(year ?? admissionYear, normalizedSemester);
+    if (!normalizedSemester || normalizedSemester < 1 || normalizedSemester > 8) {
+      return res.status(400).json({ success: false, message: 'Current semester must be between 1 and 8' });
+    }
+    if (!normalizedYear || normalizedYear !== Math.ceil(normalizedSemester / 2)) {
+      return res.status(400).json({ success: false, message: 'Year does not match the selected semester' });
+    }
+    const normalizedSection = String(section ?? '').trim().toUpperCase();
+    const allowedSections = normalizedYear === 1
+      ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']
+      : ['A', 'B'];
+    if (!allowedSections.includes(normalizedSection)) {
+      return res.status(400).json({ success: false, message: `Invalid section for year ${normalizedYear}` });
+    }
+    if (!String(email ?? '').trim()) {
+      return res.status(400).json({ success: false, message: 'Email is required' });
+    }
+    if (!/^[^\s@]+@sgsits\.ac\.in$/i.test(normalizedEmail)) {
+      return res.status(400).json({ success: false, message: 'Enter a valid SGSITS email address (name@sgsits.ac.in)' });
+    }
+    if (!String(firstName ?? '').trim()) {
+      return res.status(400).json({ success: false, message: 'First name is required' });
+    }
+    if (dob) {
+      const dobDate = new Date(dob);
+      if (Number.isNaN(dobDate.getTime())) {
+        return res.status(400).json({ success: false, message: 'Please enter a valid date of birth' });
+      }
+      const today = new Date();
+      const age = (today - dobDate) / (365.25 * 24 * 60 * 60 * 1000);
+      if (age < 15 || age > 100) {
+        return res.status(400).json({ success: false, message: 'Date of birth must represent an age of 15-100 years' });
+      }
+    }
     if (!isValidPhone(phone)) {
       return res.status(400).json({ success: false, message: PHONE_ERROR_MESSAGE });
     }
 
-    const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ success: false, message: 'Email already in use' });
+    const existing = await User.findOne({ email: normalizedEmail });
+    if (existing) {
+      const hasStudentProfile = await Student.findOne({ userId: existing._id });
+      if (!hasStudentProfile && existing.role === 'student') {
+        await User.findByIdAndDelete(existing._id);
+      } else {
+        return res.status(400).json({ success: false, message: 'Email already in use' });
+      }
+    }
 
     if (!normalizedEnrollmentNo) {
       return res.status(400).json({ success: false, message: 'Enrollment number is required' });
@@ -206,20 +252,27 @@ exports.enrollStudent = async (req, res) => {
     }
 
     const passwordHash = await bcrypt.hash(password || 'College@123', 12);
-    const user = await User.create({ email, passwordHash, role: 'student' });
-
-    const student = await Student.create({
-      userId: user._id, enrollmentNo: normalizedEnrollmentNo, firstName, lastName, branch, currentSemester, section, year: normalizedYear, session: normalizedSession, dob, gender, phone, address, fatherName, motherName,
-    });
-    await StudentAcademicHistory.create({
-      studentId: student._id,
-      session: normalizedSession,
-      semester: Number(currentSemester),
-      year: normalizedYear,
-      branch,
-      section,
-      term: Number(currentSemester) % 2 === 0 ? 'january-june' : 'july-december',
-    });
+    let user;
+    let student;
+    try {
+      user = await User.create({ email: normalizedEmail, passwordHash, role: 'student' });
+      student = await Student.create({
+        userId: user._id, enrollmentNo: normalizedEnrollmentNo, firstName: String(firstName).trim(), lastName: String(lastName ?? '').trim(), branch, currentSemester: normalizedSemester, section: normalizedSection, year: normalizedYear, session: normalizedSession, dob: dob || undefined, gender, phone, address, fatherName, motherName,
+      });
+      await StudentAcademicHistory.create({
+        studentId: student._id,
+        session: normalizedSession,
+        semester: normalizedSemester,
+        year: normalizedYear,
+        branch,
+        section: normalizedSection,
+        term: normalizedSemester % 2 === 0 ? 'january-june' : 'july-december',
+      });
+    } catch (createErr) {
+      if (student) await Student.findByIdAndDelete(student._id);
+      if (user) await User.findByIdAndDelete(user._id);
+      return res.status(400).json({ success: false, message: createErr.message });
+    }
 
     res.status(201).json({ success: true, data: { student } });
   } catch (err) {
@@ -397,6 +450,16 @@ exports.updateStudent = async (req, res) => {
     if (update.phone !== undefined && !isValidPhone(update.phone)) {
       return res.status(400).json({ success: false, message: PHONE_ERROR_MESSAGE });
     }
+    if (update.dob !== undefined && update.dob) {
+      const dobDate = new Date(update.dob);
+      if (Number.isNaN(dobDate.getTime())) {
+        return res.status(400).json({ success: false, message: 'Please enter a valid date of birth' });
+      }
+      const age = (new Date() - dobDate) / (365.25 * 24 * 60 * 60 * 1000);
+      if (age < 15 || age > 100) {
+        return res.status(400).json({ success: false, message: 'Date of birth must represent an age of 15-100 years' });
+      }
+    }
     if (update.enrollmentNo !== undefined) update.enrollmentNo = String(update.enrollmentNo).trim();
     if (update.session !== undefined) update.session = normalizeSessionValue(update.session);
     if (update.year === undefined && update.admissionYear !== undefined) {
@@ -404,6 +467,25 @@ exports.updateStudent = async (req, res) => {
     }
     if (update.year === undefined && update.currentSemester !== undefined) {
       update.year = normalizeStudentYear(undefined, update.currentSemester);
+    }
+    if (update.currentSemester !== undefined) {
+      const semester = Number(update.currentSemester);
+      if (!Number.isInteger(semester) || semester < 1 || semester > 8) {
+        return res.status(400).json({ success: false, message: 'Current semester must be between 1 and 8' });
+      }
+      update.year = Math.ceil(semester / 2);
+      update.currentSemester = semester;
+    }
+    if (update.section !== undefined) {
+      const section = String(update.section).trim().toUpperCase();
+      const year = Number(update.year);
+      const allowedSections = year === 1
+        ? ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K']
+        : ['A', 'B'];
+      if (!allowedSections.includes(section)) {
+        return res.status(400).json({ success: false, message: `Invalid section for year ${year}` });
+      }
+      update.section = section;
     }
 
     if (update.enrollmentNo) {
@@ -437,19 +519,63 @@ exports.deleteStudent = async (req, res) => {
 // Faculty
 exports.enrollFaculty = async (req, res) => {
   try {
-    const { email, password, employeeId, firstName, lastName, department, designation, qualification, joiningDate, phone, address, subjectIds, personalEmail, gender, experience } = req.body;
+    const { email, password, employeeId, namePrefix, firstName, lastName, department, designation, qualification, joiningDate, phone, address, subjectIds, labIds, personalEmail, gender, experience } = req.body;
+    const allowedNamePrefixes = ['', 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.', 'Prof.'];
+    const normalizedNamePrefix = allowedNamePrefixes.includes(String(namePrefix ?? '').trim())
+      ? String(namePrefix).trim()
+      : '';
+    const normalizedEmail = String(email ?? '').trim().toLowerCase();
+    if (!/^[^\s@]+@sgsits\.ac\.in$/i.test(normalizedEmail)) {
+      return res.status(400).json({ success: false, message: 'Enter a valid SGSITS email address (name@sgsits.ac.in)' });
+    }
     if (!isValidPhone(phone)) {
       return res.status(400).json({ success: false, message: PHONE_ERROR_MESSAGE });
     }
 
-    const existing = await User.findOne({ email });
+    const existing = await User.findOne({ email: normalizedEmail });
     if (existing) return res.status(400).json({ success: false, message: 'Email already in use' });
 
     const passwordHash = await bcrypt.hash(password || 'Faculty@123', 12);
-    const user = await User.create({ email, passwordHash, role: 'faculty' });
+    const normalizedDepartment = normalizeDepartment(department);
+    const assignedSubjects = Array.isArray(subjectIds) ? [...new Set(subjectIds.filter(Boolean).map(String))] : [];
+    const assignedLabs = Array.isArray(labIds) ? [...new Set(labIds.filter(Boolean).map(String))] : [];
 
-    const assignedSubjects = Array.isArray(subjectIds) ? subjectIds.filter(Boolean) : [];
-    const faculty = await Faculty.create({ userId: user._id, employeeId, firstName, lastName, department: normalizeDepartment(department), designation, qualification, joiningDate, phone, address, personalEmail, gender, experience, subjectsTaught: assignedSubjects });
+    if (assignedSubjects.length) {
+      const validSubjects = await Subject.countDocuments({
+        _id: { $in: assignedSubjects },
+        $or: [
+          { branch: { $in: departmentValues(normalizedDepartment) } },
+          { isCommon: true },
+        ],
+      });
+      if (validSubjects !== assignedSubjects.length) {
+        return res.status(400).json({ success: false, message: 'All assigned subjects must belong to the faculty department' });
+      }
+    }
+
+    if (assignedLabs.length) {
+      const validLabs = await Lab.countDocuments({
+        _id: { $in: assignedLabs },
+        $or: [
+          { branch: { $in: departmentValues(normalizedDepartment) } },
+          { isCommon: true },
+        ],
+      });
+      if (validLabs !== assignedLabs.length) {
+        return res.status(400).json({ success: false, message: 'All assigned labs must belong to the faculty department' });
+      }
+    }
+
+    let user;
+    let faculty;
+    try {
+      user = await User.create({ email: normalizedEmail, passwordHash, role: 'faculty' });
+      faculty = await Faculty.create({ userId: user._id, employeeId, namePrefix: normalizedNamePrefix, firstName, lastName, department: normalizeDepartment(department), designation, qualification, joiningDate, phone, address, personalEmail, gender, experience, subjectsTaught: assignedSubjects });
+    } catch (createErr) {
+      if (faculty) await Faculty.findByIdAndDelete(faculty._id);
+      if (user) await User.findByIdAndDelete(user._id);
+      return res.status(400).json({ success: false, message: createErr.message });
+    }
 
     if (assignedSubjects.length > 0) {
       const subjects = await Subject.find({ _id: { $in: assignedSubjects } })
@@ -460,6 +586,17 @@ exports.enrollFaculty = async (req, res) => {
         fallbackSession: normalizeSessionValue(req.academicSession),
       });
       await syncFacultySubjectsTaughtFromAssignments([faculty._id]);
+      await reconcilePrimaryFacultyPointers(faculty._id);
+    }
+
+    if (assignedLabs.length > 0) {
+      const labs = await Lab.find({ _id: { $in: assignedLabs } })
+        .select('code name branch semester session').lean();
+      await Lab.updateMany({ _id: { $in: assignedLabs } }, { facultyId: faculty._id });
+      await ensureTeachingAssignments(faculty._id, {
+        labs,
+        fallbackSession: normalizeSessionValue(req.academicSession),
+      });
       await reconcilePrimaryFacultyPointers(faculty._id);
     }
 
@@ -480,6 +617,7 @@ exports.getFaculty = async (req, res) => {
         { _id: 1 }
       ).lean();
       filter.$or = [
+        { namePrefix: new RegExp(search, 'i') },
         { firstName: new RegExp(search, 'i') },
         { lastName: new RegExp(search, 'i') },
         { employeeId: new RegExp(search, 'i') },
@@ -642,9 +780,14 @@ exports.replaceTeachingAssignments = async (req, res) => {
 
 exports.updateFaculty = async (req, res) => {
   try {
-    const allowed = ['firstName', 'lastName', 'personalEmail', 'phone', 'address', 'gender', 'department', 'designation', 'qualification', 'experience', 'joiningDate', 'profilePhotoUrl', 'signatureUrl'];
+    const allowed = ['namePrefix', 'firstName', 'lastName', 'personalEmail', 'phone', 'address', 'gender', 'department', 'designation', 'qualification', 'experience', 'joiningDate', 'profilePhotoUrl', 'signatureUrl'];
     const update = {};
     allowed.forEach(k => { if (req.body[k] !== undefined) update[k] = req.body[k]; });
+    if (update.namePrefix !== undefined) {
+      const allowedNamePrefixes = ['', 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.', 'Prof.'];
+      const normalizedNamePrefix = String(update.namePrefix).trim();
+      update.namePrefix = allowedNamePrefixes.includes(normalizedNamePrefix) ? normalizedNamePrefix : '';
+    }
     if (update.department !== undefined) update.department = normalizeDepartment(update.department);
     if (update.phone !== undefined && !isValidPhone(update.phone)) {
       return res.status(400).json({ success: false, message: PHONE_ERROR_MESSAGE });
@@ -896,10 +1039,10 @@ exports.bulkUploadStudents = async (req, res) => {
           continue;
         }
 
-        // Email format validation - must be @college.edu domain
-        const emailRegex = /^[^@]+@college\.edu$/i;
+        // SGSITS institutional email format
+        const emailRegex = /^[^@]+@sgsits\.ac\.in$/i;
         if (!emailRegex.test(email)) {
-          results.failed.push({ row: idx + 2, reason: 'Invalid email format. Use format like: student@college.edu', data: { email } });
+          results.failed.push({ row: idx + 2, reason: 'Invalid email format. Use format like: student@sgsits.ac.in', data: { email } });
           continue;
         }
 
@@ -916,7 +1059,9 @@ exports.bulkUploadStudents = async (req, res) => {
         }
 
         // split full name
-        const parts = fullName.split(/\s+/);
+        const prefixMatch = fullName.match(/^(Mr\.|Mrs\.|Ms\.|Miss|Dr\.|Prof\.)\s+/i);
+        const normalizedFullName = prefixMatch ? fullName.slice(prefixMatch[0].length).trim() : fullName;
+        const parts = normalizedFullName.split(/\s+/);
         const firstName = parts.shift();
         const lastName = parts.join(' ') || '';
 
@@ -1011,10 +1156,10 @@ exports.bulkUploadFaculty = async (req, res) => {
           continue;
         }
 
-        // Email format validation - must be @college.edu domain
-        const emailRegex = /^[^@]+@college\.edu$/i;
+        // SGSITS institutional email format
+        const emailRegex = /^[^@]+@sgsits\.ac\.in$/i;
         if (!emailRegex.test(email)) {
-          results.failed.push({ row: idx + 2, reason: 'Invalid email format. Use format like: faculty@college.edu', data: { email } });
+          results.failed.push({ row: idx + 2, reason: 'Invalid email format. Use format like: faculty@sgsits.ac.in', data: { email } });
           continue;
         }
 
@@ -1029,7 +1174,9 @@ exports.bulkUploadFaculty = async (req, res) => {
           continue;
         }
 
-        const parts = fullName.split(/\s+/);
+        const prefixMatch = fullName.match(/^(Mr\.|Mrs\.|Ms\.|Miss|Dr\.|Prof\.)\s+/i);
+        const normalizedFullName = prefixMatch ? fullName.slice(prefixMatch[0].length).trim() : fullName;
+        const parts = normalizedFullName.split(/\s+/);
         const firstName = parts.shift();
         const lastName = parts.join(' ') || '';
 
@@ -1044,9 +1191,28 @@ exports.bulkUploadFaculty = async (req, res) => {
         const defaultPassword = 'Welcome@123';
         const passwordHash = await bcrypt.hash(defaultPassword, 12);
 
-        const user = await User.create({ email, passwordHash, role: 'faculty', username });
-
-        const faculty = await Faculty.create({ userId: user._id, employeeId, firstName, lastName, department: selectedDepartment, designation, phone });
+        const namePrefixValue = String(row.namePrefix || row.NamePrefix || row.prefix || row.Prefix || '').trim();
+        const allowedNamePrefixes = ['', 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.', 'Prof.'];
+        let namePrefix = allowedNamePrefixes.includes(namePrefixValue) ? namePrefixValue : '';
+        if (!namePrefix && prefixMatch) {
+          const rawPrefix = prefixMatch[1];
+          namePrefix = rawPrefix.toLowerCase() === 'mr.' ? 'Mr.'
+            : rawPrefix.toLowerCase() === 'mrs.' ? 'Mrs.'
+            : rawPrefix.toLowerCase() === 'ms.' ? 'Ms.'
+            : rawPrefix.toLowerCase() === 'miss' ? 'Miss'
+            : rawPrefix.toLowerCase() === 'dr.' ? 'Dr.'
+            : 'Prof.';
+        }
+        let user;
+        let faculty;
+        try {
+          user = await User.create({ email, passwordHash, role: 'faculty', username });
+          faculty = await Faculty.create({ userId: user._id, employeeId, namePrefix, firstName, lastName, department: selectedDepartment, designation, phone });
+        } catch (createErr) {
+          if (faculty) await Faculty.findByIdAndDelete(faculty._id);
+          if (user) await User.findByIdAndDelete(user._id);
+          throw createErr;
+        }
 
         results.success.push({ row: idx + 2, userId: user._id, facultyId: faculty._id, email, employeeId });
       } catch (errRow) {
@@ -1272,8 +1438,14 @@ exports.importCommonYearOne = async (req, res) => {
 
       const isLab = Boolean(sourceLab);
       const Model = isLab ? Lab : Subject;
+      const normalizedCode = normalizeSubjectCodeForScheme(code, source.branch || branch, targetSemester);
+      const codeError = validateSubjectCode(normalizedCode, source.branch || branch, targetSemester, { isCommon: true });
+      if (codeError) {
+        created.skipped.push({ code, reason: codeError });
+        continue;
+      }
       const doc = await Model.create({
-        code,
+        code: normalizedCode,
         name: source.name,
         branch,
         semester: targetSemester,
@@ -1385,18 +1557,25 @@ exports.copyScheme = async (req, res) => {
       Lab.find(targetScope).select('code').lean(),
     ]);
 
-    const takenCodes = new Set([
-      ...existingSubjects.map((item) => item.code),
-      ...existingLabs.map((item) => item.code),
-    ]);
+    const existingBranch = branch || sourceSubjects[0]?.branch || sourceLabs[0]?.branch;
+    const existingSemester = semester || sourceSubjects[0]?.semester || sourceLabs[0]?.semester;
+    const takenSubjectCodes = new Set(
+      existingSubjects.map((item) => normalizeSubjectCodeForScheme(item.code, existingBranch, existingSemester)),
+    );
+    const takenLabCodes = new Set(
+      existingLabs.map((item) => normalizeSubjectCodeForScheme(item.code, existingBranch, existingSemester)),
+    );
 
     const subjectDocs = [];
     let skippedSubjects = 0;
     for (const subject of sourceSubjects) {
-      if (takenCodes.has(subject.code)) { skippedSubjects += 1; continue; }
-      takenCodes.add(subject.code);
+      const copiedCode = normalizeSubjectCodeForScheme(subject.code, subject.branch, subject.semester);
+      const codeError = validateSubjectCode(copiedCode, subject.branch, subject.semester, { isCommon: !!subject.isCommon });
+      if (codeError) { skippedSubjects += 1; continue; }
+      if (takenSubjectCodes.has(copiedCode)) { skippedSubjects += 1; continue; }
+      takenSubjectCodes.add(copiedCode);
       subjectDocs.push({
-        code: subject.code,
+        code: copiedCode,
         name: subject.name,
         type: subject.type,
         branch: subject.branch,
@@ -1420,10 +1599,13 @@ exports.copyScheme = async (req, res) => {
     const labDocs = [];
     let skippedLabs = 0;
     for (const lab of sourceLabs) {
-      if (takenCodes.has(lab.code)) { skippedLabs += 1; continue; }
-      takenCodes.add(lab.code);
+      const copiedCode = normalizeSubjectCodeForScheme(lab.code, lab.branch, lab.semester);
+      const codeError = validateSubjectCode(copiedCode, lab.branch, lab.semester, { isCommon: !!lab.isCommon });
+      if (codeError) { skippedLabs += 1; continue; }
+      if (takenLabCodes.has(copiedCode)) { skippedLabs += 1; continue; }
+      takenLabCodes.add(copiedCode);
       labDocs.push({
-        code: lab.code,
+        code: copiedCode,
         name: lab.name,
         branch: lab.branch,
         semester: lab.semester,
@@ -1510,8 +1692,13 @@ exports.copyYearOneToAllBranches = async (req, res) => {
 
       const subDocs = commonSubjects
         .filter(s => !takenCodes.has(s.code))
-        .map(s => ({
-          code: s.code, name: s.name, type: s.type, branch: targetBranch,
+        .map(s => {
+          const code = normalizeSubjectCodeForScheme(s.code, s.branch, s.semester);
+          if (validateSubjectCode(code, s.branch, s.semester, { isCommon: true })) return null;
+          if (takenCodes.has(code)) return null;
+          takenCodes.add(code);
+          return {
+          code, name: s.name, type: s.type, branch: targetBranch,
           semester: s.semester, session,
           isCommon: true,
           l: s.l, t: s.t, p: s.p, credits: s.credits,
@@ -1519,19 +1706,28 @@ exports.copyYearOneToAllBranches = async (req, res) => {
           practicalEndMax: s.practicalEndMax, swMax: s.swMax,
           syllabusText: s.syllabusText, syllabusFile: s.syllabusFile,
           electiveOptions: s.electiveOptions || [],
-        }));
+          };
+        })
+        .filter(Boolean);
 
       const labDocs = commonLabs
         .filter(l => !takenCodes.has(l.code))
-        .map(l => ({
-          code: l.code, name: l.name, branch: targetBranch,
+        .map(l => {
+          const code = normalizeSubjectCodeForScheme(l.code, l.branch, l.semester);
+          if (validateSubjectCode(code, l.branch, l.semester, { isCommon: true })) return null;
+          if (takenCodes.has(code)) return null;
+          takenCodes.add(code);
+          return {
+          code, name: l.name, branch: targetBranch,
           semester: l.semester, session,
           isCommon: true,
           l: l.l, t: l.t, p: l.p, credits: l.credits,
           theoryEndMax: l.theoryEndMax, cwMax: l.cwMax,
           practicalEndMax: l.practicalEndMax, swMax: l.swMax,
           syllabusText: l.syllabusText, syllabusFile: l.syllabusFile,
-        }));
+          };
+        })
+        .filter(Boolean);
 
       const insertSkipping = async (Model, docs) => {
         if (!docs.length) return 0;
@@ -3319,6 +3515,7 @@ exports.exportFaculty = async (req, res) => {
         { _id: 1 }
       ).lean();
       filter.$or = [
+        { namePrefix: new RegExp(search, 'i') },
         { firstName: new RegExp(search, 'i') },
         { lastName: new RegExp(search, 'i') },
         { employeeId: new RegExp(search, 'i') },

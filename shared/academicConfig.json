@@ -11,7 +11,8 @@
     "PHYSICS",
     "CHEMISTRY",
     "ELECTRICAL ENGINEERING",
-    "HUMANITIES"
+    "HUMANITIES",
+    "MBA"
   ],
   "DEPARTMENT_LABELS": {
     "IT": "Information Technology",
@@ -25,7 +26,8 @@
     "PHYSICS": "Physics",
     "CHEMISTRY": "Chemistry",
     "ELECTRICAL ENGINEERING": "Electrical Engineering",
-    "HUMANITIES": "Humanities"
+    "HUMANITIES": "Humanities",
+    "MBA": "Master of Business Administration"
   },
   "DEPARTMENT_ALIASES": {
     "IT": ["IT", "Information Technology"],
@@ -39,7 +41,8 @@
     "PHYSICS": ["PHYSICS", "Physics"],
     "CHEMISTRY": ["CHEMISTRY", "Chemistry"],
     "ELECTRICAL ENGINEERING": ["ELECTRICAL ENGINEERING", "Electrical Engineering", "Electrical"],
-    "HUMANITIES": ["HUMANITIES", "Humanities"]
+    "HUMANITIES": ["HUMANITIES", "Humanities"],
+    "MBA": ["MBA", "Master of Business Administration", "Business Administration"]
   },
   "YEARS": [1, 2, 3, 4],
   "SEMESTERS_BY_YEAR": {

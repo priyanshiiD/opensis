@@ -8,14 +8,14 @@ const path = require('path');
 
 // Sample student data (2 test entries)
 const studentData = [
-  { rollNo: 'STU001', fullName: 'Rahul Sharma', email: 'rahul.sharma@college.edu', branch: 'IT', semester: 1 },
-  { rollNo: 'STU002', fullName: 'Priya Verma', email: 'priya.verma@college.edu', branch: 'CSE', semester: 3 },
+  { rollNo: 'STU001', fullName: 'Rahul Sharma', email: 'rahul.sharma@sgsits.ac.in', branch: 'IT', semester: 1 },
+  { rollNo: 'STU002', fullName: 'Priya Verma', email: 'priya.verma@sgsits.ac.in', branch: 'CSE', semester: 3 },
 ];
 
 // Sample faculty data (2 test entries)
 const facultyData = [
-  { employeeId: 'FAC001', fullName: 'Amit Mishra', email: 'amit.mishra@college.edu', department: 'IT', designation: 'Professor' },
-  { employeeId: 'FAC002', fullName: 'Neha Bhat', email: 'neha.bhat@college.edu', department: 'CSE', designation: 'Assistant Professor' },
+  { employeeId: 'FAC001', namePrefix: 'Dr.', fullName: 'Amit Mishra', email: 'amit.mishra@sgsits.ac.in', department: 'IT', designation: 'Professor' },
+  { employeeId: 'FAC002', namePrefix: 'Mrs.', fullName: 'Neha Bhat', email: 'neha.bhat@sgsits.ac.in', department: 'CSE', designation: 'Assistant Professor' },
 ];
 
 async function generateStudentExcel() {
@@ -57,6 +57,7 @@ async function generateFacultyExcel() {
   // Add header row
   worksheet.columns = [
     { header: 'employeeId', key: 'employeeId', width: 12 },
+    { header: 'namePrefix', key: 'namePrefix', width: 12 },
     { header: 'fullName', key: 'fullName', width: 20 },
     { header: 'email', key: 'email', width: 25 },
     { header: 'department', key: 'department', width: 18 },
