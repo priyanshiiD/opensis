@@ -19,9 +19,9 @@ export default function Login() {
     navigate(redirects[user.role] || '/', { replace: true });
   }, [user, navigate]);
 
-  // Email validation regex - college/student email format (including .edu, .ac.in, .in, .com, etc.)
+  // SGSITS institutional email format
   const isValidEmail = (email) => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/;
+    const emailRegex = /^[^\s@]+@sgsits\.ac\.in$/i;
     return emailRegex.test(email);
   };
 
@@ -32,7 +32,7 @@ export default function Login() {
     if (!form.email.trim()) {
       newErrors.email = 'Email is required';
     } else if (!isValidEmail(form.email)) {
-      newErrors.email = 'Enter a valid college email (e.g. name@college.edu)';
+      newErrors.email = 'Enter a valid SGSITS email (name@sgsits.ac.in)';
     }
 
     if (!form.password) {
@@ -264,7 +264,7 @@ export default function Login() {
                       ? 'border-red-300 focus:ring-red-500/10 focus:border-red-500'
                       : 'border-slate-200 focus:ring-sgsits-blue-950/10 focus:border-sgsits-blue-900'
                       }`}
-                    placeholder="name@college.edu"
+                    placeholder="name@sgsits.ac.in"
                     value={form.email}
                     onChange={handleEmailChange}
                   />

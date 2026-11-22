@@ -4,7 +4,7 @@ const studentSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
   enrollmentNo: { type: String, required: true, unique: true, trim: true },
   firstName: { type: String, required: true, trim: true },
-  lastName: { type: String, required: true, trim: true },
+  lastName: { type: String, trim: true, default: '' },
   // DOB: Date of birth with age validation (15-100 years old)
   dob: {
     type: Date,
@@ -45,7 +45,11 @@ const studentSchema = new mongoose.Schema({
   address: String,
   branch: { type: String, required: true },
   currentSemester: { type: Number, required: true },
-  section: { type: mongoose.Schema.Types.ObjectId, ref: 'Section' },
+  section: {
+    type: String,
+    trim: true,
+    uppercase: true,
+  },
   batch: { type: String, trim: true },
   // Academic year in the program (1st, 2nd, 3rd, 4th year)
   year: {

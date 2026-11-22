@@ -7,6 +7,7 @@ import { useAuth } from '../../context/AuthContext';
 import { isValidPhone, PHONE_ERROR_MESSAGE } from '../../utils/phoneValidation';
 import { getDepartmentLabel } from '../../constants/departments';
 import { resolveAssetUrl } from '../../utils/assetUrl';
+import { FACULTY_QUALIFICATION_OPTIONS } from '../../constants/facultyProfessional';
 
 const GENDER_OPTIONS = [
   { value: '', label: 'Select gender' },
@@ -329,13 +330,18 @@ export default function FacultyProfile() {
 
               <div>
                 <label className="label">Qualification</label>
-                <input
+                <select
                   className="input"
                   value={form.qualification}
                   onChange={e => setField('qualification', e.target.value)}
-                  placeholder="e.g. M.Tech, Ph.D"
                   disabled={!editing}
-                />
+                >
+                  <option value="">Select qualification</option>
+                  {form.qualification && !FACULTY_QUALIFICATION_OPTIONS.includes(form.qualification) && (
+                    <option value={form.qualification}>{form.qualification}</option>
+                  )}
+                  {FACULTY_QUALIFICATION_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
+                </select>
               </div>
 
               <div>

@@ -1,6 +1,11 @@
 const Subject = require('../models/Subject');
 const Lab = require('../models/Lab');
 const FacultyTeachingAssignment = require('../models/FacultyTeachingAssignment');
+const Result = require('../models/Result');
+const {
+  validateSubjectCode,
+  normalizeSubjectCodeForScheme,
+} = require('../utils/subjectCode');
 
 const SCHEME_INDEX_NAME = 'scheme_session_branch_semester_code';
 const SCHEME_INDEX_KEYS = { session: 1, branch: 1, semester: 1, code: 1 };
@@ -158,12 +163,87 @@ const repairMislabeledLabAssignments = async () => {
   }
 };
 
+const auditSubjectCodeFormats = async () => {
+  for (const [Model, label] of [[Subject, 'subject'], [Lab, 'lab']]) {
+    const records = await Model.find({}).select('_id code branch semester isCommon').lean();
+    const invalid = records.filter((record) =>
+      validateSubjectCode(record.code, record.branch, record.semester, { isCommon: !!record.isCommon }),
+    );
+    if (invalid.length) {
+      console.warn(
+        `[migration] Found ${invalid.length} ${label}(s) with invalid branch/year code format. `
+        + `Fix through the admin ${label} form before reuse.`,
+      );
+    }
+  }
+};
+
+const normalizeExistingSubjectCodes = async () => {
+  let normalizedCount = 0;
+  let conflictCount = 0;
+
+  for (const [Model, label, idField, itemType] of [
+    [Subject, 'subject', 'subjectId', 'class'],
+    [Lab, 'lab', 'labId', 'lab'],
+  ]) {
+    const records = await Model.find({}).select('_id code branch semester session isCommon').lean();
+
+    for (const record of records) {
+      const normalized = normalizeSubjectCodeForScheme(record.code, record.branch, record.semester);
+      if (!normalized || normalized === String(record.code || '').trim().toUpperCase()) continue;
+
+      const codeError = validateSubjectCode(normalized, record.branch, record.semester, {
+        isCommon: !!record.isCommon,
+      });
+      if (codeError) {
+        conflictCount += 1;
+        continue;
+      }
+
+      const duplicateScope = {
+        code: normalized,
+        session: record.session,
+        branch: record.branch,
+        semester: record.semester,
+        _id: { $ne: record._id },
+      };
+      const duplicate = await Model.findOne(duplicateScope).select('_id').lean();
+      if (duplicate) {
+        console.warn(
+          `[migration] Skipped ${label} code ${record.code}: normalized code ${normalized} is already used.`,
+        );
+        conflictCount += 1;
+        continue;
+      }
+
+      await Model.updateOne({ _id: record._id }, { $set: { code: normalized } });
+
+      await Result.updateMany(
+        { 'subjectMarks': { $elemMatch: { [idField]: record._id } } },
+        { $set: { 'subjectMarks.$[item].itemCode': normalized } },
+        { arrayFilters: [{ [`item.${idField}`]: record._id }] },
+      );
+
+      normalizedCount += 1;
+      console.log(`[migration] Normalized ${label} code ${record.code} -> ${normalized}`);
+    }
+  }
+
+  if (normalizedCount || conflictCount) {
+    console.log(
+      `[migration] Subject/lab code normalization: ${normalizedCount} updated, ${conflictCount} skipped/conflicted.`,
+    );
+  }
+};
+
 // Idempotent, non-destructive. Safe to run on every startup.
 const migrateAcademicScheme = async () => {
   try {
+    await normalizeExistingSubjectCodes();
     await ensureSchemeUniqueIndex(Subject, 'Subject');
     await ensureSchemeUniqueIndex(Lab, 'Lab');
     await repairMislabeledLabAssignments();
+    await auditSubjectCodeFormats();
     await ensureAssignmentIndex();
   } catch (err) {
     console.error('[migration] Academic scheme migration error:', err.message);

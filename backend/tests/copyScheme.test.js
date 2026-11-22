@@ -69,7 +69,7 @@ test('copyScheme clones scheme without faculty and skips existing target codes',
 
   const copiedSubjects = Subject.insertMany.mock.calls[0][0];
   expect(copiedSubjects).toHaveLength(1);
-  expect(copiedSubjects[0].code).toBe('IT501');
+  expect(copiedSubjects[0].code).toBe('IT30501');
   expect(copiedSubjects[0].session).toBe('2025-2026');
   expect(copiedSubjects[0].facultyId).toBeUndefined();
   expect(copiedSubjects[0].electiveOptions).toEqual(['e1']);

@@ -15,6 +15,7 @@ const { syncRooms } = require('./src/services/roomSync');
 const TimetableEntry = require('./src/models/TimetableEntry');
 const FileAsset = require('./src/models/FileAsset');
 const { migrateAcademicScheme } = require('./src/migrations/academicScheme');
+const { migrateSgsitsEmails } = require('./scripts/migrate-sgsits-emails');
 
 const app = express();
 
@@ -41,21 +42,21 @@ const autoSeed = async () => {
 
     const hash = (p) => bcrypt.hash(p, 12);
 
-    const adminUser = await User.create({ email: 'admin@college.edu', passwordHash: await hash('Admin@123'), role: 'admin' });
+    const adminUser = await User.create({ email: 'admin@sgsits.ac.in', passwordHash: await hash('Admin@123'), role: 'admin' });
     const admin = await Admin.create({ userId: adminUser._id, firstName: 'Super', lastName: 'Admin', phone: '9000000000' });
 
-    const f1User = await User.create({ email: 'prof.sharma@college.edu', passwordHash: await hash('Faculty@123'), role: 'faculty' });
-    const f2User = await User.create({ email: 'prof.gupta@college.edu', passwordHash: await hash('Faculty@123'), role: 'faculty' });
+    const f1User = await User.create({ email: 'prof.sharma@sgsits.ac.in', passwordHash: await hash('Faculty@123'), role: 'faculty' });
+    const f2User = await User.create({ email: 'prof.gupta@sgsits.ac.in', passwordHash: await hash('Faculty@123'), role: 'faculty' });
 
     const faculty1 = await Faculty.create({ userId: f1User._id, employeeId: 'EMP001', firstName: 'Rajesh', lastName: 'Sharma', department: 'IT', designation: 'Associate Professor', qualification: 'M.Tech', joiningDate: new Date('2018-07-01'), phone: '9111111111' });
     const faculty2 = await Faculty.create({ userId: f2User._id, employeeId: 'EMP002', firstName: 'Priya', lastName: 'Gupta', department: 'CSE', designation: 'Assistant Professor', qualification: 'Ph.D', joiningDate: new Date('2020-01-15'), phone: '9222222222' });
 
     const SESSION = '2024-2025';
-    const sub1 = await Subject.create({ code: 'IT501', name: 'Data Structures & Algorithms', type: 'theory', branch: 'IT', semester: 5, session: SESSION, l: 3, t: 1, p: 0, credits: 4, facultyId: faculty1._id });
-    const sub2 = await Subject.create({ code: 'IT502', name: 'Computer Networks', type: 'theory', branch: 'IT', semester: 5, session: SESSION, l: 3, t: 0, p: 0, credits: 3, facultyId: faculty1._id });
-    const sub3 = await Subject.create({ code: 'CSE501', name: 'Database Management Systems', type: 'theory', branch: 'CSE', semester: 5, session: SESSION, l: 3, t: 1, p: 0, credits: 4, facultyId: faculty2._id });
-    const sub4 = await Subject.create({ code: 'CSE502', name: 'Operating Systems', type: 'theory', branch: 'CSE', semester: 5, session: SESSION, l: 3, t: 1, p: 0, credits: 3, facultyId: faculty2._id });
-    const lab1 = await Lab.create({ code: 'ITL501', name: 'Data Structures Lab', branch: 'IT', semester: 5, year: 3, session: SESSION, l: 0, t: 0, p: 2, credits: 1, facultyId: faculty1._id });
+    const sub1 = await Subject.create({ code: 'IT30501', name: 'Data Structures & Algorithms', type: 'theory', branch: 'IT', semester: 5, session: SESSION, l: 3, t: 1, p: 0, credits: 4, facultyId: faculty1._id });
+    const sub2 = await Subject.create({ code: 'IT30502', name: 'Computer Networks', type: 'theory', branch: 'IT', semester: 5, session: SESSION, l: 3, t: 0, p: 0, credits: 3, facultyId: faculty1._id });
+    const sub3 = await Subject.create({ code: 'CS30501', name: 'Database Management Systems', type: 'theory', branch: 'CSE', semester: 5, session: SESSION, l: 3, t: 1, p: 0, credits: 4, facultyId: faculty2._id });
+    const sub4 = await Subject.create({ code: 'CS30502', name: 'Operating Systems', type: 'theory', branch: 'CSE', semester: 5, session: SESSION, l: 3, t: 1, p: 0, credits: 3, facultyId: faculty2._id });
+    const lab1 = await Lab.create({ code: 'IT30501', name: 'Data Structures Lab', branch: 'IT', semester: 5, year: 3, session: SESSION, l: 0, t: 0, p: 2, credits: 1, facultyId: faculty1._id });
 
     const defaultSection = await Section.findOneAndUpdate(
       { department: 'IT', year: 3, sectionName: 'A' },
@@ -79,9 +80,9 @@ const autoSeed = async () => {
       return Student.create({ userId: u._id, enrollmentNo: enrollNo, firstName: first, lastName: last, branch: 'IT', currentSemester: 5, section: defaultSection._id, year: 3, session: '2024-25', gender: 'female', phone: '9000000001', fatherName: 'Ram ' + last, motherName: 'Sita ' + last });
     };
 
-    const s1 = await makeStudent('alice@student.college.edu', '0801IT221001', 'Alice', 'Patel');
-    const s2 = await makeStudent('bob@student.college.edu', '0801IT221002', 'Bob', 'Verma');
-    const s3 = await makeStudent('carol@student.college.edu', '0801IT221003', 'Carol', 'Singh');
+    const s1 = await makeStudent('alice@sgsits.ac.in', '0801IT221001', 'Alice', 'Patel');
+    const s2 = await makeStudent('bob@sgsits.ac.in', '0801IT221002', 'Bob', 'Verma');
+    const s3 = await makeStudent('carol@sgsits.ac.in', '0801IT221003', 'Carol', 'Singh');
 
     for (const student of [s1, s2, s3]) {
       await Fee.create({ studentId: student._id, session: '2024-25', semester: 5, amount: 45000, dueDate: new Date('2024-08-31') });
@@ -115,6 +116,7 @@ const autoSeed = async () => {
 connectDB().then(async () => {
   await syncRooms();
   await TimetableEntry.syncIndexes();
+  await migrateSgsitsEmails();
   await migrateAcademicScheme();
   await autoSeed();
 }).catch(err => console.error('Startup synchronization error:', err));
@@ -164,8 +166,8 @@ app.get('/docs/sample_students.xlsx', async (req, res) => {
   try {
     // Simple sample rows matching the current bulk upload format
     const samples = [
-      { rollNo: 'STU001', fullName: 'Rahul Sharma', email: 'rahul.sharma@college.edu', branch: 'IT', semester: 1 },
-      { rollNo: 'STU002', fullName: 'Priya Verma', email: 'priya.verma@college.edu', branch: 'CSE', semester: 3 },
+      { rollNo: 'STU001', fullName: 'Rahul Sharma', email: 'rahul.sharma@sgsits.ac.in', branch: 'IT', semester: 1 },
+      { rollNo: 'STU002', fullName: 'Priya Verma', email: 'priya.verma@sgsits.ac.in', branch: 'CSE', semester: 3 },
     ];
 
     const workbook = createStudentTemplateWorkbook(samples);
@@ -182,8 +184,8 @@ app.get('/docs/sample_students.xlsx', async (req, res) => {
 app.get('/docs/sample_faculty.xlsx', async (req, res) => {
   try {
     const samples = [
-      { employeeId: 'FAC001', fullName: 'Amit Mishra', email: 'amit.mishra@college.edu', department: 'IT', designation: 'Professor' },
-      { employeeId: 'FAC002', fullName: 'Neha Bhat', email: 'neha.bhat@college.edu', department: 'CSE', designation: 'Assistant Professor' },
+      { employeeId: 'FAC001', namePrefix: 'Dr.', fullName: 'Amit Mishra', email: 'amit.mishra@sgsits.ac.in', department: 'IT', designation: 'Professor' },
+      { employeeId: 'FAC002', namePrefix: 'Ms.', fullName: 'Neha Bhat', email: 'neha.bhat@sgsits.ac.in', department: 'CSE', designation: 'Assistant Professor' },
     ];
 
     const workbook = createFacultyTemplateWorkbook(samples);

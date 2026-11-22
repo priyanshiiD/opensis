@@ -3,6 +3,12 @@ const mongoose = require('mongoose');
 const facultySchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true, unique: true },
   employeeId: { type: String, required: true, unique: true },
+  namePrefix: {
+    type: String,
+    enum: ['', 'Mr.', 'Mrs.', 'Ms.', 'Miss', 'Dr.', 'Prof.'],
+    default: '',
+    trim: true,
+  },
   firstName: { type: String, required: true, trim: true },
   lastName: { type: String, required: true, trim: true },
   personalEmail: { type: String, trim: true, lowercase: true },

@@ -194,6 +194,7 @@ async function run() {
   const Subject = require('./src/models/Subject');
   const Lab     = require('./src/models/Lab');
   const FacultyTeachingAssignment = require('./src/models/FacultyTeachingAssignment');
+  const { normalizeSubjectCodeForScheme } = require('./src/utils/subjectCode');
 
   let subjectCount = 0, labCount = 0, assignmentCount = 0, skipped = 0;
 
@@ -203,11 +204,12 @@ async function run() {
 
     // ── Subjects ──
     for (const s of data.subjects) {
-      const existing = await Subject.findOne({ code: s.code, session: SESSION, branch: BRANCH, semester }).lean();
+      const subjectCode = normalizeSubjectCodeForScheme(s.code, BRANCH, semester);
+      const existing = await Subject.findOne({ code: subjectCode, session: SESSION, branch: BRANCH, semester }).lean();
       if (existing) { console.log(`  ⏭ Subject exists: ${s.code}`); skipped++; continue; }
 
       const subjectDoc = await Subject.create({
-        code: s.code, name: s.name, type: 'theory',
+        code: subjectCode, name: s.name, type: 'theory',
         branch: BRANCH, semester, session: SESSION,
         category: s.category,
         l: s.l, t: s.t, p: s.p, credits: s.credits,
@@ -237,19 +239,21 @@ async function run() {
 
     // ── Labs ──
     for (const l of data.labs) {
-      const existing = await Lab.findOne({ code: l.code, session: SESSION, branch: BRANCH, semester }).lean();
+      const labCode = normalizeSubjectCodeForScheme(l.code, BRANCH, semester);
+      const existing = await Lab.findOne({ code: labCode, session: SESSION, branch: BRANCH, semester }).lean();
       if (existing) { console.log(`  ⏭ Lab exists: ${l.code}`); skipped++; continue; }
 
       // Merge theory faculty for linked subjects
       let allFacultyIds = [...(l.faculty || [])];
       for (const tCode of (l.linkedTheoryCodes || [])) {
-        const theorySubject = await Subject.findOne({ code: tCode, session: SESSION, branch: BRANCH, semester }).lean();
+        const normalizedTheoryCode = normalizeSubjectCodeForScheme(tCode, BRANCH, semester);
+        const theorySubject = await Subject.findOne({ code: normalizedTheoryCode, session: SESSION, branch: BRANCH, semester }).lean();
         if (theorySubject && theorySubject.facultyId) {
           const fid = String(theorySubject.facultyId);
           if (!allFacultyIds.includes(fid)) allFacultyIds.push(fid);
         }
         // Also check teaching assignments for that theory subject
-        const theoryDoc = await Subject.findOne({ code: tCode, session: SESSION, branch: BRANCH, semester }).lean();
+        const theoryDoc = await Subject.findOne({ code: normalizedTheoryCode, session: SESSION, branch: BRANCH, semester }).lean();
         if (theoryDoc) {
           const theoryAssignments = await FacultyTeachingAssignment.find({
             subjectId: theoryDoc._id, session: SESSION,
@@ -264,7 +268,7 @@ async function run() {
       allFacultyIds = [...new Set(allFacultyIds.filter(Boolean))];
 
       const labDoc = await Lab.create({
-        code: l.code, name: l.name,
+        code: labCode, name: l.name,
         branch: BRANCH, semester, session: SESSION,
         category: l.category,
         l: l.l, t: l.t, p: l.p, credits: l.credits,

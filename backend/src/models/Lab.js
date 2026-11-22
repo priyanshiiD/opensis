@@ -1,7 +1,19 @@
 const mongoose = require('mongoose');
+const { validateSubjectCode } = require('../utils/subjectCode');
 
 const labSchema = new mongoose.Schema({
-  code: { type: String, required: true, uppercase: true, trim: true },
+  code: {
+    type: String,
+    required: true,
+    uppercase: true,
+    trim: true,
+    validate: {
+      validator(value) {
+        return !validateSubjectCode(value, this.branch, this.semester, { isCommon: this.isCommon });
+      },
+      message: 'Lab code does not match the required branch/year format',
+    },
+  },
   name: { type: String, required: true, trim: true },
   branch: { type: String, required: true, trim: true, uppercase: true },
   semester: { type: Number, required: true, min: 1, max: 8 },
