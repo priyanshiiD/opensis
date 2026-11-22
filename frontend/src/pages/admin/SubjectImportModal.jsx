@@ -135,7 +135,7 @@ export default function SubjectImportModal({
     const errors = [];
     const warnings = [...(target.warnings || []).filter(w => !w.includes('Type conflict') && !w.includes('TOTAL marks'))];
 
-    if (!String(target.code || '').trim()) errors.push('Course code is required');
+    if (!String(target.code || '').trim()) errors.push('Subject Code is required');
     if (!String(target.name || '').trim()) errors.push('Course nomenclature is required');
     if (Number(target.int) < 0) errors.push('INT marks cannot be negative');
     if (Number(target.ext) < 0) errors.push('EXT marks cannot be negative');

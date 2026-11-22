@@ -14,7 +14,7 @@ const { normalizeSession } = require('../utils/academicSession');
 const { departmentMatches, departmentLabel } = require('../utils/departments');
 
 const CANONICAL_HEADERS = [
-  'course_code',
+  'subject_code',
   'course_nomenclature',
   'INT',
   'EXT',
@@ -46,13 +46,13 @@ const inferType = (code, name) => {
   if (nameHasLab && codeEndsWithT) {
     return {
       type: 'lab',
-      warning: 'Type conflict: Nomenclature mentions Lab but course code ends with T. Inferred as Lab.',
+      warning: 'Type conflict: Nomenclature mentions Lab but subject code ends with T. Inferred as Lab.',
     };
   }
   if (!nameHasLab && codeEndsWithP) {
     return {
       type: 'lab',
-      warning: 'Type conflict: Course code ends with P but nomenclature does not mention Lab. Inferred as Lab.',
+      warning: 'Type conflict: Subject code ends with P but nomenclature does not mention Lab. Inferred as Lab.',
     };
   }
 
@@ -87,7 +87,7 @@ const parseImportBuffer = (buffer) => {
   let headerIdx = -1;
   for (let i = 0; i < Math.min(rows.length, 15); i++) {
     const rowStr = rows[i].map(c => normalizeHeaderKey(c)).join('|');
-    if ((rowStr.includes('coursecode') || rowStr.includes('code')) &&
+    if ((rowStr.includes('subjectcode') || rowStr.includes('code')) &&
         (rowStr.includes('nomenclature') || rowStr.includes('coursenomenclature') || rowStr.includes('name'))) {
       headerIdx = i;
       break;
@@ -96,7 +96,7 @@ const parseImportBuffer = (buffer) => {
 
   if (headerIdx === -1) {
     throw new Error(
-      'Invalid file headers. Expected columns: course_code, course_nomenclature, INT, EXT, TOTAL, CREDITS, Name of program and branch(SGSITS)'
+      'Invalid file headers. Expected columns: subject_code, course_nomenclature, INT, EXT, TOTAL, CREDITS, Name of program and branch(SGSITS)'
     );
   }
 
@@ -123,7 +123,7 @@ const parseImportBuffer = (buffer) => {
     const h = normalizeHeaderKey(headerRow[c]);
     const sub = subHeaderRow ? String(subHeaderRow[c] || '').toLowerCase() : '';
 
-    if (codeCol === -1 && (h === 'coursecode' || h === 'code')) codeCol = c;
+    if (codeCol === -1 && (h === 'subjectcode' || h === 'code')) codeCol = c;
     else if (nameCol === -1 && (h === 'coursenomenclature' || h === 'nomenclature' || h === 'subjectname' || h === 'name')) nameCol = c;
     else if (creditsCol === -1 && (h === 'credits' || h === 'credit' || h === 'cr')) creditsCol = c;
     else if (programCol === -1 && (h.includes('program') || h.includes('branch'))) programCol = c;
@@ -152,7 +152,7 @@ const parseImportBuffer = (buffer) => {
   }
 
   if (codeCol === -1 || nameCol === -1) {
-    throw new Error('Required columns "course_code" and "course_nomenclature" were not found in the file.');
+    throw new Error('Required columns "subject_code" and "course_nomenclature" were not found in the file.');
   }
 
   const parsedRows = [];
@@ -163,14 +163,14 @@ const parseImportBuffer = (buffer) => {
     const rawCode = String(row[codeCol] !== undefined ? row[codeCol] : '').trim();
     // Silent skip for heading rows, empty code cells, or repeated subheaders
     if (!rawCode) continue;
-    if (['COURSE CODE', 'CODE', 'MAX MARKS', 'MIN MARKS', 'SL NO', 'S.NO.'].includes(rawCode.toUpperCase())) continue;
+    if (['SUBJECT CODE', 'CODE', 'MAX MARKS', 'MIN MARKS', 'SL NO', 'S.NO.'].includes(rawCode.toUpperCase())) continue;
 
     const rawName = String(row[nameCol] !== undefined ? row[nameCol] : '').trim();
     const rawProgram = programCol !== -1 ? String(row[programCol] !== undefined ? row[programCol] : '').trim() : '';
 
     const parseNum = (val) => {
       if (val === undefined || val === null || val === '') return 0;
-      const num = Number(String(val).replace(/[^0-9.]/g, ''));
+      const num = Number(String(val).trim());
       return Number.isFinite(num) ? num : 0;
     };
 
@@ -228,12 +228,12 @@ const previewImport = async ({ buffer, originalname, session, branch, semester, 
     const warnings = [];
     const errors = [];
 
-    // Validation 1: Course code format
+    // Validation 1: Subject code format
     const code = normalizeAcademicCode(item.code);
     if (!code) {
-      errors.push('Course code is required');
+      errors.push('Subject code is required');
     } else if (seenInFile.has(code)) {
-      errors.push(`Duplicate course code "${code}" found in import file`);
+      errors.push(`Duplicate subject code "${code}" found in import file`);
     } else {
       seenInFile.add(code);
     }
@@ -277,10 +277,10 @@ const previewImport = async ({ buffer, originalname, session, branch, semester, 
       existingRecord = existingMap.get(code);
       if (updateMode === 'update') {
         action = 'update';
-        warnings.push(`Course code "${code}" already exists in ${normBranch} Sem ${semNum}. Record will be updated.`);
+        warnings.push(`Subject code "${code}" already exists in ${normBranch} Sem ${semNum}. Record will be updated.`);
       } else {
         action = 'skip';
-        warnings.push(`Course code "${code}" already exists in ${normBranch} Sem ${semNum}. Record will be skipped.`);
+        warnings.push(`Subject code "${code}" already exists in ${normBranch} Sem ${semNum}. Record will be skipped.`);
       }
     }
 
@@ -459,7 +459,7 @@ const createImportTemplateWorkbook = () => {
   const sheet = workbook.addWorksheet('Import Template');
 
   sheet.columns = [
-    { header: 'course_code', key: 'course_code', width: 16 },
+    { header: 'subject_code', key: 'subject_code', width: 16 },
     { header: 'course_nomenclature', key: 'course_nomenclature', width: 36 },
     { header: 'INT', key: 'INT', width: 12 },
     { header: 'EXT', key: 'EXT', width: 12 },
@@ -477,7 +477,7 @@ const createImportTemplateWorkbook = () => {
 
   // Sample guidance rows
   sheet.addRow({
-    course_code: 'IT301T',
+    subject_code: 'IT301T',
     course_nomenclature: 'Operating Systems',
     INT: 30,
     EXT: 70,
@@ -486,7 +486,7 @@ const createImportTemplateWorkbook = () => {
     program_and_branch: 'Information Technology',
   });
   sheet.addRow({
-    course_code: 'IT302P',
+    subject_code: 'IT302P',
     course_nomenclature: 'Operating Systems Lab',
     INT: 40,
     EXT: 60,
@@ -503,7 +503,7 @@ const createSubjectsExportWorkbook = ({ subjects = [], labs = [], departmentName
   const sheet = workbook.addWorksheet('Subjects & Labs');
 
   sheet.columns = [
-    { header: 'Course Code', key: 'code', width: 16 },
+    { header: 'Subject Code', key: 'subject_code', width: 16 },
     { header: 'Course Nomenclature', key: 'name', width: 36 },
     { header: 'INT', key: 'int', width: 12 },
     { header: 'EXT', key: 'ext', width: 12 },
@@ -534,7 +534,7 @@ const createSubjectsExportWorkbook = ({ subjects = [], labs = [], departmentName
     const progLabel = departmentLabel(item.branch) || departmentName || item.branch || '';
 
     sheet.addRow({
-      code: item.code,
+      subject_code: item.code,
       name: item.name,
       int: intMarks,
       ext: extMarks,
