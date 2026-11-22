@@ -158,6 +158,47 @@ exports.getOptions = async (req, res) => {
   }
 };
 
+exports.getAdminSections = async (req, res) => {
+  try {
+    const sections = await Section.find().sort({ department: 1, year: 1, sectionName: 1 })
+      .select('_id department year sectionName batches').lean();
+    res.json({ success: true, data: { sections } });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getFacultyEntriesForAdmin = async (req, res) => {
+  try {
+    let profile = null;
+    if (mongoose.isValidObjectId(req.params.facultyId)) {
+      profile = await Faculty.findById(req.params.facultyId).select('userId firstName lastName department').lean();
+      if (!profile) {
+        profile = await Faculty.findOne({ userId: req.params.facultyId }).select('userId firstName lastName department').lean();
+      }
+    } else {
+      profile = await Faculty.findOne({ userId: req.params.facultyId }).select('userId firstName lastName department').lean();
+    }
+    if (!profile?.userId) return res.status(404).json({ success: false, message: 'Faculty profile not found' });
+
+    const timetable = await getFacultyTimetable(profile.userId, {
+      session: req.academicSession,
+      term: req.academicTerm,
+      academicYear: req.query.academicYear,
+      semester: req.query.semester,
+    });
+    res.json({
+      success: true,
+      data: {
+        profile,
+        ...timetable,
+      },
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 exports.getToday = async (req, res) => {
   try {
     const data = await getTodayTimetable(req.user._id, req.user.role, new Date(), {
@@ -184,6 +225,33 @@ exports.getSectionEntries = async (req, res) => {
     res.json({ success: true, data: { entries: await addFacultyNames(entries) } });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.validateEntriesPreview = async (req, res) => {
+  try {
+    const entries = normalizeEntries(req.body);
+    if (!entries.length) {
+      return res.status(400).json({ success: false, message: 'At least one timetable entry is required', errors: [] });
+    }
+
+    const results = await Promise.all(entries.map(async entry => ({
+      day: entry.day,
+      ...(await validateEntry(entry, entry.excludeId || null)),
+    })));
+    const errors = results.flatMap(result =>
+      result.errors.map(message => ({ day: result.day, message }))
+    );
+
+    return res.json({
+      success: errors.length === 0,
+      data: {
+        valid: errors.length === 0,
+        errors,
+      },
+    });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message, errors: [{ message: error.message }] });
   }
 };
 
@@ -324,15 +392,21 @@ exports.downloadMyPdf = async (req, res) => {
       : data.facultyName;
     const filename = `Timetable_${cleanFilenamePart(headerName)}_${cleanFilenamePart(academicYear)}.pdf`;
 
-    return createTimetablePdf(res, {
+    const department = role === 'student'
+      ? (data.studentSection?.department || data.student?.section?.department || data.student?.branch || null)
+      : (data.facultyDepartment || null);
+
+    await createTimetablePdf(res, {
       entries,
       role,
       headerName,
       section: data.student?.section,
       studentBatch: data.student?.batch,
       academicYear,
+      department,
       filename,
     });
+    return;
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }

@@ -255,12 +255,13 @@ async function getFacultyTimetable(userId, filters = {}) {
     return true;
   });
   const [profile, user] = await Promise.all([
-    Faculty.findOne({ userId }).select('firstName lastName').lean(),
+    Faculty.findOne({ userId }).select('firstName lastName department').lean(),
     User.findById(userId).select('email').lean(),
   ]);
   return {
     entries: await addFacultyNames(entries),
     facultyName: profile ? `${profile.firstName} ${profile.lastName}`.trim() : user?.email || 'Faculty',
+    facultyDepartment: profile?.department || null,
     availableAcademicYears,
     availableSemesters,
     selectedAcademicYear,

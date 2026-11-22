@@ -39,6 +39,13 @@ const roomIdentity = room => {
   return match ? { building: match[1].toUpperCase(), roomNo: match[2] } : { building: '', roomNo: '' };
 };
 
+const signaturePreviewUrl = imageUrl => {
+  if (/^https?:\/\//i.test(api.defaults.baseURL || '') && imageUrl) {
+    return new URL(imageUrl, api.defaults.baseURL).toString();
+  }
+  return imageUrl;
+};
+
 export default function ManageTimetable() {
   const { selectedSession, selectedTerm } = useAuth();
   const [options, setOptions] = useState({ subjects: [], rooms: [], faculty: [] });
@@ -59,6 +66,12 @@ export default function ManageTimetable() {
   const [conflicts, setConflicts] = useState([]);
   const [batchDraft, setBatchDraft] = useState('');
   const [showAllFaculty, setShowAllFaculty] = useState(false);
+  const [hodDepartments, setHodDepartments] = useState([]);
+  const [hodDepartmentsLoading, setHodDepartmentsLoading] = useState(true);
+  const [hodDepartmentsError, setHodDepartmentsError] = useState('');
+  const [hodDepartment, setHodDepartment] = useState('');
+  const [hodFile, setHodFile] = useState(null);
+  const [hodUploading, setHodUploading] = useState(false);
 
   const selectedSection = section;
   const selectedSubject = options.subjects.find(subject => subject._id === form.subject);
@@ -66,6 +79,75 @@ export default function ManageTimetable() {
   const roomOptions = options.rooms.filter(room => !isLab || room.type === 'lab' || roomConfig.ROOM_TYPES[`${room.building}-${room.roomNo}`] === 'lab');
   const roomNumbers = form.building ? roomConfig.ROOMS_BY_BUILDING[form.building] || [] : [];
   const selectedRoom = roomOptions.find(room => room.building === form.building && room.roomNo === form.roomNo);
+
+  useEffect(() => {
+    if (!showModal || !selectedSection?._id || !form.subject || !selectedRoom?._id || (isLab ? form.faculties.length === 0 : !form.faculty)) {
+      if (showModal) setConflicts([]);
+      return undefined;
+    }
+
+    const entries = (editingEntry ? [editingEntry.day] : form.days).map(day => ({
+      section: section._id,
+      subject: form.subject,
+      faculty: isLab ? (form.faculties[0] || form.faculty) : form.faculty,
+      faculties: isLab ? form.faculties : [form.faculty],
+      subjectType: selectedSubject?.subjectType || 'Subject',
+      showAllFaculty,
+      room: selectedRoom._id,
+      batch: isLab ? (form.batch || null) : null,
+      day,
+      startSlot: Number(form.daySlots[day]),
+      slotCount: isLab ? 2 : 1,
+      academicYear,
+      semester: Number(semester),
+      excludeId: editingEntry?._id,
+    }));
+
+    let cancelled = false;
+    const timeoutId = window.setTimeout(() => {
+      api.post('/timetable/validate', { entries })
+        .then(({ data }) => {
+          if (!cancelled) {
+            const nextErrors = (data.data?.errors || []).map(item =>
+              item.day ? `Day ${item.day}: ${item.message}` : item.message
+            );
+            setConflicts(nextErrors);
+          }
+        })
+        .catch(error => {
+          if (!cancelled) {
+            const serverErrors = error.response?.data?.errors || [{ message: error.response?.data?.message }];
+            setConflicts(serverErrors.filter(Boolean).map(item =>
+              item.day ? `Day ${item.day}: ${item.message}` : item.message
+            ));
+          }
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
+  }, [
+    showModal,
+    selectedSection?._id,
+    form.subject,
+    form.faculty,
+    form.faculties,
+    form.building,
+    form.roomNo,
+    form.batch,
+    form.days,
+    form.daySlots,
+    selectedRoom?._id,
+    selectedSubject?.subjectType,
+    isLab,
+    showAllFaculty,
+    editingEntry?._id,
+    editingEntry?.day,
+    academicYear,
+    semester,
+  ]);
 
   const filteredSubjects = useMemo(() => options.subjects.filter(subject => {
     if (!selectedSection) return true;
@@ -113,6 +195,19 @@ export default function ManageTimetable() {
       const next = data.data;
       setOptions(next);
     }).finally(() => setLoading(false));
+  }, []);
+
+  useEffect(() => {
+    setHodDepartmentsLoading(true);
+    setHodDepartmentsError('');
+    api.get('/admin/hod-signatures')
+      .then(({ data }) => setHodDepartments(data.data.departments || []))
+      .catch(error => {
+        const message = error.response?.data?.message || 'Failed to load departments';
+        setHodDepartmentsError(message);
+        toast.error(message);
+      })
+      .finally(() => setHodDepartmentsLoading(false));
   }, []);
 
   useEffect(() => {
@@ -262,6 +357,51 @@ export default function ManageTimetable() {
   };
   const handleBuildingChange = building => setForm(current => ({ ...current, building, roomNo: '' }));
 
+  const uploadHodSignature = async event => {
+    event.preventDefault();
+    if (!hodDepartment || !hodFile) {
+      toast.error('Select a department and signature image.');
+      return;
+    }
+    if (!['image/png', 'image/jpeg'].includes(hodFile.type)) {
+      toast.error('Only PNG and JPG/JPEG images are allowed.');
+      return;
+    }
+    if (hodFile.size > 5 * 1024 * 1024) {
+      toast.error('Signature image must be 5 MB or smaller.');
+      return;
+    }
+
+    setHodUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('signature', hodFile);
+      await api.put(`/admin/hod-signatures/${encodeURIComponent(hodDepartment)}`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const { data } = await api.get('/admin/hod-signatures');
+      setHodDepartments(data.data.departments || []);
+      setHodFile(null);
+      toast.success('HOD signature updated');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to upload HOD signature');
+    } finally {
+      setHodUploading(false);
+    }
+  };
+
+  const deleteHodSignature = async department => {
+    if (!window.confirm('Remove the HOD signature for this department?')) return;
+    try {
+      await api.delete(`/admin/hod-signatures/${encodeURIComponent(department)}`);
+      const { data } = await api.get('/admin/hod-signatures');
+      setHodDepartments(data.data.departments || []);
+      toast.success('HOD signature removed');
+    } catch (error) {
+      toast.error(error.response?.data?.message || 'Failed to remove HOD signature');
+    }
+  };
+
   const persistBatches = async nextBatches => {
     if (!section?._id) return;
     const { data } = await api.patch(`/sections/${section._id}/batches`, { batches: nextBatches });
@@ -362,6 +502,59 @@ export default function ManageTimetable() {
         {filtersReady && <button type="button" onClick={() => openCreate()} className="btn-primary"><Plus className="h-4 w-4" />{TIMETABLE_MESSAGES.ADD_CLASS}</button>}
       </div>
 
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="mb-3">
+          <h2 className="font-semibold text-slate-800">HOD Signatures</h2>
+          <p className="text-xs text-slate-500">Optional department-wise signatures for student and faculty timetable PDFs.</p>
+        </div>
+        <form onSubmit={uploadHodSignature} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="label sm:w-64">
+            Department
+            <select className="input mt-1" value={hodDepartment} onChange={event => setHodDepartment(event.target.value)}>
+              <option value="">
+                {hodDepartmentsLoading ? 'Loading departments...' : hodDepartments.length ? 'Select department' : 'No departments found'}
+              </option>
+              {hodDepartments.map(item => (
+                <option key={item.department} value={item.department}>{item.departmentLabel}</option>
+              ))}
+            </select>
+            {hodDepartmentsError && <p className="mt-1 text-xs text-red-600">{hodDepartmentsError}</p>}
+          </label>
+          <label className="label flex-1">
+            Signature image
+            <input
+              className="input mt-1"
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={event => setHodFile(event.target.files?.[0] || null)}
+            />
+          </label>
+          <button type="submit" disabled={hodUploading || !hodDepartment || !hodFile} className="btn-primary whitespace-nowrap">
+            {hodUploading ? 'Uploading...' : 'Upload / Replace'}
+          </button>
+        </form>
+        {hodDepartments.some(item => item.signature) && (
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {hodDepartments.filter(item => item.signature).map(item => (
+              <div key={item.department} className="flex items-center gap-3 rounded-xl border border-slate-200 p-3">
+                <img
+                  src={`${signaturePreviewUrl(item.signature.imageUrl)}${item.signature.imageUrl.includes('?') ? '&' : '?'}v=${encodeURIComponent(item.signature.updatedAt || '')}`}
+                  alt={`${item.departmentLabel} HOD signature`}
+                  className="h-12 w-24 object-contain"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-slate-700">{item.departmentLabel}</p>
+                  <p className="truncate text-xs text-slate-400">{item.signature.fileName}</p>
+                </div>
+                <button type="button" onClick={() => deleteHodSignature(item.department)} className="rounded-lg p-2 text-red-500 hover:bg-red-50" title="Remove signature">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       <div className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-6">
         <label className="label">Session<select className="input mt-1" value={academicYear} onChange={event => resetFromAcademicYear(event.target.value)}><option value="">Select session</option>{academicYears.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
         <label className="label">Department<select className="input mt-1" value={department} disabled={!academicYear} onChange={event => resetFromDepartment(event.target.value)}><option value="">Select department</option>{departments.map(value => <option key={value} value={value}>{academicConfig.DEPARTMENT_LABELS[value] || value}</option>)}</select></label>
@@ -379,7 +572,7 @@ export default function ManageTimetable() {
           <form onSubmit={handleSave} className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
             <div className="mb-5 flex items-start justify-between"><div><h2 className="text-xl font-bold text-slate-800">{editingEntry ? TIMETABLE_MESSAGES.EDIT_TIMETABLE_ENTRY : TIMETABLE_MESSAGES.ADD_TIMETABLE_CLASS}</h2><p className="mt-1 text-sm text-slate-500">{academicConfig.DEPARTMENT_LABELS[selectedSection?.department] || selectedSection?.department} · {selectedSection?.sectionName} · Semester {semester}</p></div><button type="button" onClick={closeModal} className="rounded-lg p-2 text-slate-400 hover:bg-slate-100"><X className="h-5 w-5" /></button></div>
 
-            {conflicts.length > 0 && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"><p className="font-semibold">Could not save timetable:</p>{conflicts.map((message, index) => <p key={`${message}-${index}`} className="mt-1">{message}</p>)}</div>}
+            {conflicts.length > 0 && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"><p className="font-semibold">Scheduling conflicts detected:</p>{conflicts.map((message, index) => <p key={`${message}-${index}`} className="mt-1">{message}</p>)}</div>}
 
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="label sm:col-span-2">Subject<select required className="input mt-1" value={form.subject} onChange={event => handleSubjectChange(event.target.value)}><option value="">Select subject</option>{filteredSubjects.map(subject => <option key={`${subject.subjectType}-${subject._id}`} value={subject._id}>{subject.type === 'lab' ? '[LAB] ' : ''}{subject.code} · {subject.name} {subject.type === 'lab' ? '' : '(THEORY)'}</option>)}</select>{!filteredSubjects.length && <p className="mt-1 text-xs text-amber-700">{TIMETABLE_MESSAGES.NO_SUBJECTS_AVAILABLE}</p>}</label>

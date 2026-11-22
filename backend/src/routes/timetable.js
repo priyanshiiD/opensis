@@ -10,9 +10,12 @@ router.get('/me/pdf', authenticate, authorize('student', 'faculty'), ctrl.downlo
 
 router.use(authenticate, authorize('admin'));
 router.get('/options', ctrl.getOptions);
+router.get('/admin/sections', ctrl.getAdminSections);
+router.get('/faculty/:facultyId', ctrl.getFacultyEntriesForAdmin);
 router.get('/diagnostics/faculty-ids', ctrl.diagnoseFacultyIds);
 router.get('/', ctrl.getFilteredEntries);
 router.get('/section/:sectionId', ctrl.getSectionEntries);
+router.post('/validate', ctrl.validateEntriesPreview);
 router.post('/', ctrl.createEntries);
 router.put('/:id', ctrl.updateEntry);
 router.delete('/:id', ctrl.deleteEntry);

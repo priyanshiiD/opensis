@@ -81,7 +81,7 @@ describe('Subject Import V2 (7-column format)', () => {
   describe('File Parsing & Sub-header Handling', () => {
     test('parses standard 7-column spreadsheet correctly', () => {
       const sheetData = [
-        ['course_code', 'course_nomenclature', 'INT', 'EXT', 'TOTAL', 'CREDITS', 'Name of program and branch(SGSITS)'],
+        ['subject_code', 'course_nomenclature', 'INT', 'EXT', 'TOTAL', 'CREDITS', 'Name of program and branch(SGSITS)'],
         ['IT301T', 'Operating Systems', 30, 70, 100, 4, 'Information Technology'],
         ['IT302P', 'Operating Systems Lab', 40, 60, 100, 2, 'Information Technology'],
       ];
@@ -100,7 +100,7 @@ describe('Subject Import V2 (7-column format)', () => {
 
     test('silently ignores extra min marks column and sub-header row', () => {
       const sheetData = [
-        ['course_code', 'course_nomenclature', 'INT', '', 'EXT', '', 'TOTAL', '', 'CREDITS', 'Name of program and branch(SGSITS)'],
+        ['subject_code', 'course_nomenclature', 'INT', '', 'EXT', '', 'TOTAL', '', 'CREDITS', 'Name of program and branch(SGSITS)'],
         ['', '', 'MAX MARKS', 'MIN MARKS', 'MAX MARKS', 'MIN MARKS', 'MAX MARKS', 'MIN MARKS', '', ''],
         ['IT401T', 'Cloud Computing', 30, 12, 70, 28, 100, 40, 4, 'Information Technology'],
         ['', '', '', '', '', '', '', '', '', ''], // empty row
@@ -126,7 +126,7 @@ describe('Subject Import V2 (7-column format)', () => {
       Lab.find.mockReturnValue({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }) });
 
       const sheetData = [
-        ['course_code', 'course_nomenclature', 'INT', 'EXT', 'TOTAL', 'CREDITS', 'Name of program and branch(SGSITS)'],
+        ['subject_code', 'course_nomenclature', 'INT', 'EXT', 'TOTAL', 'CREDITS', 'Name of program and branch(SGSITS)'],
         ['IT501T', '', 30, 70, 100, 4, 'Information Technology'], // missing name
         ['IT502T', 'Negative Marks Subject', -10, 70, 60, 4, 'Information Technology'], // negative INT
         ['IT503T', 'Original Course', 30, 70, 100, 4, 'Information Technology'],
@@ -146,7 +146,7 @@ describe('Subject Import V2 (7-column format)', () => {
       expect(preview.summary.errors).toBe(3); // rows 0, 1, and 3 have errors
       expect(preview.rows[0].errors).toContain('Course nomenclature is required');
       expect(preview.rows[1].errors).toContain('INT marks cannot be negative');
-      expect(preview.rows[3].errors[0]).toMatch(/Duplicate course code/);
+      expect(preview.rows[3].errors[0]).toMatch(/Duplicate subject code/);
     });
 
     test('handles existing records: skip mode vs update mode', async () => {
@@ -158,7 +158,7 @@ describe('Subject Import V2 (7-column format)', () => {
       Lab.find.mockReturnValue({ select: jest.fn().mockReturnValue({ lean: jest.fn().mockResolvedValue([]) }) });
 
       const sheetData = [
-        ['course_code', 'course_nomenclature', 'INT', 'EXT', 'TOTAL', 'CREDITS', 'Name of program and branch(SGSITS)'],
+        ['subject_code', 'course_nomenclature', 'INT', 'EXT', 'TOTAL', 'CREDITS', 'Name of program and branch(SGSITS)'],
         ['IT301T', 'Operating Systems', 30, 70, 100, 4, 'Information Technology'],
       ];
       const buffer = buildWorkbookBuffer(sheetData);
@@ -247,7 +247,7 @@ describe('Subject Import V2 (7-column format)', () => {
       const ws = wb.getWorksheet('Import Template');
       expect(ws).toBeDefined();
       expect(ws.columns).toHaveLength(7);
-      expect(ws.getRow(1).getCell(1).value).toBe('course_code');
+      expect(ws.getRow(1).getCell(1).value).toBe('subject_code');
     });
 
     test('generates valid export workbook with 7 columns', () => {
@@ -258,6 +258,7 @@ describe('Subject Import V2 (7-column format)', () => {
       expect(ws).toBeDefined();
       expect(ws.columns).toHaveLength(7);
       expect(ws.rowCount).toBe(3); // 1 header + 2 data rows
+      expect(ws.getRow(1).getCell(1).value).toBe('Subject Code');
     });
   });
 });

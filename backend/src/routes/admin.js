@@ -6,8 +6,14 @@ const subjectImportCtrl = require('../controllers/subjectImportController');
 const excelUpload = require('../middleware/excelUpload');
 const importUpload = require('../middleware/importUpload');
 const upload = require('../middleware/upload');
+const hodSignatureUpload = require('../middleware/hodSignatureUpload');
+const hodSignatureCtrl = require('../controllers/hodSignatureController');
 
 router.use(authenticate);
+
+router.get('/hod-signatures', authorize('admin'), hodSignatureCtrl.listSignatures);
+router.put('/hod-signatures/:department', authorize('admin'), hodSignatureUpload.single('signature'), hodSignatureCtrl.uploadSignature);
+router.delete('/hod-signatures/:department', authorize('admin'), hodSignatureCtrl.deleteSignature);
 
 // Allow faculty to read students (for marks upload)
 router.get('/students/export', authorize('admin'), ctrl.exportStudents);
